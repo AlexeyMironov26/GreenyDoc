@@ -1,0 +1,348 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.min-h-screen.flex.items-center.justify-center.p-6,
+.flex-1.flex.items-center.justify-center.p-6 {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.w-full.max-w-md,
+.w-full.max-w-2xl {
+  max-width: 500px;
+  width: 90%;
+  margin: 0 auto;
+}
+
+.rounded-2xl.p-8.shadow-2xl {
+  padding: 3rem;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(to bottom, #4ade80, #16a34a);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+div.relative.border-2.border-dashed.rounded-lg.p-12.text-center.transition-all {
+  padding: 4rem 3rem;
+  border-radius: 20px;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.4);
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+div.relative.border-2.border-dashed.rounded-lg.p-12.text-center.transition-all:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+button.bg-emerald-700.text-white.px-4.py-2.rounded-md {
+  padding: 1.2rem 1.2rem;                    /* УВЕЛИЧИТЬ отступы */
+  font-size: 1.1rem;                         /* УМЕНЬШИТЬ размер шрифта */
+  border-radius: 12px;
+  min-width: 180px;                          /* УВЕЛИЧИТЬ минимальную ширину */
+  background: #047857;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  font-weight: 600;
+  white-space: nowrap;                       /* ДОБАВИТЬ - запрет переноса текста */
+  text-align: center;                        /* ДОБАВИТЬ - выравнивание по центру */
+}
+
+button.bg-emerald-700.text-white.px-4.py-2.rounded-md:hover {
+  background: #065f46;
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+button.bg-white-20.text-white.border-2.border-white-50.px-4.py-2.rounded-md {
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+button.bg-white-20.text-white.border-2.border-white-50.px-4.py-2.rounded-md:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-2px);
+}
+
+button.flex.items-center.gap-2.bg-purple-500.text-white.px-4.py-2.rounded-md {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  background: #8b5cf6;
+  border: 2px solid rgba(255, 255, 255, 0.3); 
+  transition: all 0.3s ease;
+}
+
+button.flex.items-center.gap-2.bg-purple-500.text-white.px-4.py-2.rounded-md:hover {
+  background: #7c3aed;
+  border-color: rgba(255, 255, 255, 0.5); 
+}
+
+
+
+input.w-full.px-4.py-2.rounded-md.bg-white-90.text-gray-800 {
+  padding: 1rem 1.25rem;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  transition: all 0.3s ease;
+}
+
+input.w-full.px-4.py-2.rounded-md.bg-white-90.text-gray-800:focus {
+  border-color: #4ade80;
+  background: white;
+}
+
+div.flex.gap-2.mb-6 {
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+button.flex-1.py-2.px-4.rounded-md {
+  padding: 1rem 1.25rem;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+button.flex-1.py-2.px-4.rounded-md.bg-white.text-green-700 {
+  background: white;
+  border-color: white;
+}
+
+button.flex-1.py-2.px-4.rounded-md.bg-white-20.text-white:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+div.absolute.right-0.mt-2.w-64.bg-white.rounded-lg.shadow-xl.py-2 {
+  width: 260px;
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100 {
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  margin: 0.15rem;
+  transition: all 0.2s ease;
+}
+
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100:hover {
+  background: #f3f4f6;
+}
+
+h1.text-white.text-4xl {
+  font-size: 2.5rem;
+  text-shadow: 0 0 3px #22c55e, 0 0 6px #22c55e, 0 0 9px #22c55e;
+}
+
+.border-2.border-white-50.rounded-lg.p-4.bg-white-5 {
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+button.bg-white-20.text-white.border-2.border-white-50.shrink-0.p-2.rounded-md {
+  padding: 0.75rem;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+button.bg-white-20.text-white.border-2.border-white-50.shrink-0.p-2.rounded-md:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: rotate(15deg);
+}
+
+.space-y-4 > * + * {
+  margin-top: 2rem;
+}
+
+.space-y-6 > * + * {
+  margin-top: 2.5rem;
+}
+
+.flex.items-center.justify-between.gap-4.flex-wrap {
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.flex.gap-4.items-start {
+  gap: 1.5rem;
+}
+
+.space-y-4 > div {
+  margin-bottom: 1.5rem;
+}
+
+.space-y-4 > div:last-child {
+  margin-bottom: 0;
+}
+
+form.space-y-4 > div {
+  margin-bottom: 1.8rem;
+}
+
+form.space-y-4 > div:last-child {
+  margin-bottom: 0;
+}
+
+.block.text-white.mb-2 {
+  margin-bottom: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .w-full.max-w-md,
+  .w-full.max-w-2xl {
+    max-width: 95%;
+    width: 95%;
+  }
+  
+  .rounded-2xl.p-8.shadow-2xl {
+    padding: 2rem;
+  }
+  
+  div.relative.border-2.border-dashed.rounded-lg.p-12.text-center.transition-all {
+    padding: 3rem 1.5rem;
+    min-height: 220px;
+  }
+  
+  h1.text-white.text-4xl {
+    font-size: 2rem;
+  }
+  
+  button.bg-emerald-700.text-white.px-4.py-2.rounded-md,
+  button.bg-white-20.text-white.border-2.border-white-50.px-4.py-2.rounded-md {
+    padding: 0.875rem 1.5rem;
+    font-size: 1.1rem;
+    min-width: 140px;
+  }
+  
+  .space-y-4 > * + * {
+    margin-top: 1.5rem;
+  }
+  
+  .space-y-6 > * + * {
+    margin-top: 2rem;
+  }
+  
+  form.space-y-4 > div {
+    margin-bottom: 1.5rem;
+  }
+  
+  .block.text-white.mb-2 {
+    margin-bottom: 0.6rem;
+  }
+}
+
+button, input {
+  transition: all 0.3s ease;
+}
+/* Стили для кнопок в выпадающем меню пользователя */
+div.absolute.right-0.mt-2.w-64.bg-white.rounded-lg.shadow-xl.py-2 {
+  width: 280px;
+  border-radius: 16px;
+  padding: 0.75rem;
+  background: white;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Общие стили для всех кнопок меню */
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100 {
+  padding: 1rem 1.25rem;
+  font-size: 1.1rem;
+  border-radius: 12px;
+  margin: 0.25rem 0;
+  transition: all 0.3s ease;
+  border: 2px solid #f3f4f6;
+  background: white;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* Стили для обычных кнопок меню */
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100:not(.text-red-600) {
+  border-color: #e5e7eb;
+  background: linear-gradient(135deg, #f9fafb, #f3f4f6);
+}
+
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100:not(.text-red-600):hover {
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+  border-color: #d1d5db;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Стили для кнопки "Выйти из аккаунта" */
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100.text-red-600 {
+  border: 2px solid #fecaca;
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  color: #dc2626;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+button.w-full.text-left.px-4.py-2.hover-bg-gray-100.text-red-600:hover {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border-color: #fca5a5;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2); 
+} 
+
+
+
+div.absolute.right-0.mt-2.w-64.bg-white.rounded-lg.shadow-xl.py-2 hr {
+  margin: 0.5rem 0;
+  border-color: #e5e7eb;
+  border-width: 1px;
+}
+
+
+@media (max-width: 768px) {
+  div.absolute.right-0.mt-2.w-64.bg-white.rounded-lg.shadow-xl.py-2 {
+    width: 260px;
+    padding: 0.5rem;
+  }
+  
+  button.w-full.text-left.px-4.py-2.hover-bg-gray-100 {
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+  }
+}
+
+button.flex.items-center.gap-2.bg-blue-500.text-white.px-4.py-2.rounded-md {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  background: #3b82f6;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+/* стили кнопки имеющей название логина пользователя, появляющейся после авторизации пользователя */
+
+button.flex.items-center.gap-2.bg-blue-500.text-white.px-4.py-2.rounded-md:hover {
+  background: #2563eb;
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
