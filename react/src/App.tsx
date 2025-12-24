@@ -6,36 +6,82 @@ import { SettingsPage } from '../components/SettingsPage';
 import { UserMenu } from '../components/UserMenu';
 
 const backgroundImage = './images/background.png'
+const API_URL = 'http://localhost:8000'; // FastAPI сервер
 
 type Page = 'home' | 'login' | 'history' | 'settings';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{username: string, token: string, id: number} | null>(null);
 
   useEffect(() => {
     // Check if user is logged in (from localStorage)
     const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(savedUser);
+    const savedToken = localStorage.getItem('authToken');
+    
+    if (savedUser && savedToken) {
+      try {
+        const userData = JSON.parse(savedUser);
+        setCurrentUser({
+          username: userData.username,
+          token: savedToken,
+          id: userData.id
+        });
+      } catch (e) {
+        console.error('Error parsing saved user:', e);
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('authToken');
+      }
     }
   }, []);
 
-  const handleLogin = (username: string) => {
-    setCurrentUser(username);
-    localStorage.setItem('currentUser', username);
+  const handleLogin = async (username: string, token: string, userId: number) => {
+    const userData = { username, token, id: userId };
+    setCurrentUser(userData);
+    localStorage.setItem('currentUser', JSON.stringify({ username, id: userId }));
+    localStorage.setItem('authToken', token);
     setCurrentPage('home');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (currentUser?.token) {
+      try {
+        await fetch(`${API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentUser.token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    }
+    
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
+    localStorage.removeItem('authToken');
     setCurrentPage('home');
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
+    if (currentUser?.token) {
+      try {
+        await fetch(`${API_URL}/api/user/delete-account`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentUser.token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      } catch (error) {
+        console.error('Delete account error:', error);
+      }
+    }
+    
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
+    localStorage.removeItem('authToken');
     setCurrentPage('home');
   };
 
@@ -75,7 +121,7 @@ export default function App() {
             
             {currentUser ? (
               <UserMenu
-                username={currentUser}
+                username={currentUser.username}
                 onNavigate={handleNavigate}
                 onLogout={handleLogout}
               />
@@ -102,16 +148,23 @@ export default function App() {
         )}
 
         {currentPage === 'home' && (
-          <HomePage username={currentUser || undefined} />
+          <HomePage 
+            username={currentUser?.username}
+            authToken={currentUser?.token}
+          />
         )}
 
         {currentPage === 'history' && currentUser && (
-          <HistoryPage username={currentUser} />
+          <HistoryPage 
+            username={currentUser.username}
+            authToken={currentUser.token}
+          />
         )}
 
         {currentPage === 'settings' && currentUser && (
           <SettingsPage
-            username={currentUser}
+            username={currentUser.username}
+            authToken={currentUser.token}
             onDeleteAccount={handleDeleteAccount}
           />
         )}

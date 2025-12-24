@@ -1,69 +1,88 @@
 import React, { useState } from 'react';
 
 interface LoginPageProps {
-  onLogin: (username: string) => void;
+  onLogin: (username: string, token: string, userId: number) => void;
   onBack: () => void;
 }
 
 type Tab = 'login' | 'register';
+
+const API_URL = 'http://localhost:8000';
 
 export function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>('login');
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [registerData, setRegisterData] = useState({ username: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    // Mock authentication - check if user exists in localStorage
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    
-    if (!users[loginData.username]) {
-      setError('Пользователь не найден');
-      return;
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: loginData.username,
+          password: loginData.password
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        onLogin(data.username, data.access_token, data.user_id);
+      } else {
+        setError(data.detail || 'Ошибка входа');
+      }
+    } catch (error) {
+      setError('Ошибка соединения с сервером');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (users[loginData.username] !== loginData.password) {
-      setError('Неверный пароль');
-      return;
-    }
-
-    onLogin(loginData.username);
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
     if (registerData.password !== registerData.confirmPassword) {
       setError('Пароли не совпадают');
+      setIsLoading(false);
       return;
     }
 
-    if (registerData.username.length < 3) {
-      setError('Логин должен содержать минимум 3 символа');
-      return;
+    try {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: registerData.username,
+          password: registerData.password,
+          confirm_password: registerData.confirmPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        onLogin(data.username, data.access_token, data.user_id);
+      } else {
+        setError(data.detail || 'Ошибка регистрации');
+      }
+    } catch (error) {
+      setError('Ошибка соединения с сервером');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (registerData.password.length < 6) {
-      setError('Пароль должен содержать минимум 6 символов');
-      return;
-    }
-
-    // Save user to localStorage
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    
-    if (users[registerData.username]) {
-      setError('Пользователь уже существует');
-      return;
-    }
-
-    users[registerData.username] = registerData.password;
-    localStorage.setItem('users', JSON.stringify(users));
-
-    onLogin(registerData.username);
   };
 
   return (
@@ -116,6 +135,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                   required
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -126,13 +146,15 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                   required
+                  disabled={isLoading}
                 />
               </div>
               <button
                 type="submit"
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-2 px-4 rounded-md transition-colors"
+                disabled={isLoading}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md transition-colors"
               >
-                Войти
+                {isLoading ? 'Вход...' : 'Войти'}
               </button>
             </form>
           )}
@@ -148,6 +170,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                   required
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -158,6 +181,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                   required
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -168,13 +192,15 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                   required
+                  disabled={isLoading}
                 />
               </div>
               <button
                 type="submit"
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-2 px-4 rounded-md transition-colors"
+                disabled={isLoading}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md transition-colors"
               >
-                Зарегистрироваться
+                {isLoading ? 'Регистрация...' : 'Зарегистрироваться'}
               </button>
             </form>
           )}
@@ -191,6 +217,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
         <button
           onClick={onBack}
           className="mt-4 text-white hover:text-green-300 transition-colors"
+          disabled={isLoading}
         >
           ← Вернуться на главную
         </button>

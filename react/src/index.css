@@ -46,16 +46,16 @@ div.relative.border-2.border-dashed.rounded-lg.p-12.text-center.transition-all:h
 }
 
 button.bg-emerald-700.text-white.px-4.py-2.rounded-md {
-  padding: 1.2rem 1.2rem;                    /* УВЕЛИЧИТЬ отступы */
-  font-size: 1.1rem;                         /* УМЕНЬШИТЬ размер шрифта */
+  padding: 1.2rem 1.2rem;                   
+  font-size: 1.1rem;                         
   border-radius: 12px;
-  min-width: 180px;                          /* УВЕЛИЧИТЬ минимальную ширину */
+  min-width: 180px;                          
   background: #047857;
   border: 2px solid rgba(255, 255, 255, 0.3);
   transition: all 0.3s ease;
   font-weight: 600;
-  white-space: nowrap;                       /* ДОБАВИТЬ - запрет переноса текста */
-  text-align: center;                        /* ДОБАВИТЬ - выравнивание по центру */
+  white-space: nowrap;                       
+  text-align: center;                        
 }
 
 button.bg-emerald-700.text-white.px-4.py-2.rounded-md:hover {

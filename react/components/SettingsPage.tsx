@@ -2,60 +2,97 @@ import React, { useState } from 'react';
 
 interface SettingsPageProps {
   username: string;
+  authToken: string;
   onDeleteAccount: () => void;
 }
 
-export function SettingsPage({ username, onDeleteAccount }: SettingsPageProps) {
+const API_URL = 'http://localhost:8000';
+
+export function SettingsPage({ username, authToken, onDeleteAccount }: SettingsPageProps) {
   const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
+    oldPassword: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmNewPassword: ''
   });
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage('');
+    setIsLoading(true);
 
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-
-    if (users[username] !== passwordData.currentPassword) {
-      setMessage('Неверный текущий пароль');
-      setMessageType('error');
-      return;
-    }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (passwordData.newPassword !== passwordData.confirmNewPassword) {
       setMessage('Новые пароли не совпадают');
       setMessageType('error');
+      setIsLoading(false);
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
       setMessage('Пароль должен содержать минимум 6 символов');
       setMessageType('error');
+      setIsLoading(false);
       return;
     }
 
-    users[username] = passwordData.newPassword;
-    localStorage.setItem('users', JSON.stringify(users));
+    try {
+      const response = await fetch(`${API_URL}/api/user/change-password`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          old_password: passwordData.oldPassword,
+          new_password: passwordData.newPassword,
+          confirm_new_password: passwordData.confirmNewPassword
+        })
+      });
 
-    setMessage('Пароль успешно изменен');
-    setMessageType('success');
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessage('Пароль успешно изменен');
+        setMessageType('success');
+        setPasswordData({ oldPassword: '', newPassword: '', confirmNewPassword: '' });
+      } else {
+        setMessage(data.detail || 'Ошибка изменения пароля');
+        setMessageType('error');
+      }
+    } catch (error) {
+      setMessage('Ошибка соединения с сервером');
+      setMessageType('error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     if (window.confirm('Вы уверены, что хотите удалить аккаунт? Это действие необратимо.')) {
-      const users = JSON.parse(localStorage.getItem('users') || '{}');
-      delete users[username];
-      localStorage.setItem('users', JSON.stringify(users));
+      setIsLoading(true);
       
-      // Delete user history
-      localStorage.removeItem(`history_${username}`);
-      
-      onDeleteAccount();
+      try {
+        const response = await fetch(`${API_URL}/api/user/delete-account`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          onDeleteAccount();
+        } else {
+          const data = await response.json();
+          alert(data.detail || 'Ошибка удаления аккаунта');
+        }
+      } catch (error) {
+        alert('Ошибка соединения с сервером');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -76,10 +113,11 @@ export function SettingsPage({ username, onDeleteAccount }: SettingsPageProps) {
               <label className="block text-white mb-2">Текущий пароль</label>
               <input
                 type="password"
-                value={passwordData.currentPassword}
-                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                value={passwordData.oldPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
                 className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                 required
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -90,23 +128,26 @@ export function SettingsPage({ username, onDeleteAccount }: SettingsPageProps) {
                 onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
                 className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                 required
+                disabled={isLoading}
               />
             </div>
             <div>
               <label className="block text-white mb-2">Повторите новый пароль</label>
               <input
                 type="password"
-                value={passwordData.confirmPassword}
-                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                value={passwordData.confirmNewPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmNewPassword: e.target.value })}
                 className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
                 required
+                disabled={isLoading}
               />
             </div>
             <button
               type="submit"
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-2 px-4 rounded-md transition-colors"
+              disabled={isLoading}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md transition-colors"
             >
-              Изменить пароль
+              {isLoading ? 'Изменение...' : 'Изменить пароль'}
             </button>
           </form>
 
@@ -135,9 +176,10 @@ export function SettingsPage({ username, onDeleteAccount }: SettingsPageProps) {
           </p>
           <button
             onClick={handleDeleteAccount}
-            className="bg-red-600 hover:bg-red-700 text-white py-2 px-6 rounded-md transition-colors"
+            disabled={isLoading}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 px-6 rounded-md transition-colors"
           >
-            Удалить аккаунт
+            {isLoading ? 'Удаление...' : 'Удалить аккаунт'}
           </button>
         </div>
       </div>
