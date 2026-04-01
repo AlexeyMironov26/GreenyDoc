@@ -1,0 +1,13 @@
+curl -X POST http://localhost:8000/api/auth/login -H "Content-Type: application/json" -d "{\"username\": \"admin1\", \"password\": \"admin256\"}"
+
+Ответ придет с токеном
+
+Сохранить токен
+
+curl -X GET http://localhost:8000/api/analyses/all -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJ1c2VybmFtZSI6ImFkbWluMSIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc3MTI1NzE3MH0.0ybYSaVJ_lGyQrJ3409vuwiN1Wl5oRZezkfEC8DnEKg"
+
+-H (header) это параметр для добавления заголовка (в нашем случае с токеном для авторизации)
+
+  и другие запросы по аналогии (для ввода в cmd)
+
+  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJ1c2VybmFtZSI6ImFkbWluMSIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc3MTI1NzE3MH0.0ybYSaVJ_lGyQrJ3409vuwiN1Wl5oRZezkfEC8DnEKg - временный токен

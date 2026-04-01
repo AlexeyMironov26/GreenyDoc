@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileUploadZone } from './FileUploadZone';
 import { AnalysisResult, AnalysisData } from './AnalysisResult';
+import { useApi } from './hooks/useApi';  
 
 interface HomePageProps {
   username?: string;
@@ -15,6 +16,7 @@ export function HomePage({ username, authToken }: HomePageProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string>('');
+  const { apiRequest } = useApi();
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -48,13 +50,15 @@ export function HomePage({ username, authToken }: HomePageProps) {
 
     try {
       const headers: HeadersInit = {};
-if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-}
+      const token = localStorage.getItem('authToken');
+
+      if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+      }
 
 const response = await fetch(`${API_URL}/api/analyses`, {
     method: 'POST',
-    headers: headers, // Токен добавляется только если есть
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}, // Токен добавляется только если есть
     body: formData
 });
 

@@ -2,11 +2,12 @@ import React, { useEffect, useRef } from 'react';
 
 interface UserMenuProps {
   username: string;
-  onNavigate: (page: 'home' | 'history' | 'settings') => void;
+  role?: string;  
+  onNavigate: (page: 'home' | 'history' | 'settings'| 'admin') => void;
   onLogout: () => void;
 }
 
-export function UserMenu({ username, onNavigate, onLogout }: UserMenuProps) {
+export function UserMenu({ username, role, onNavigate, onLogout }: UserMenuProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +27,10 @@ export function UserMenu({ username, onNavigate, onLogout }: UserMenuProps) {
     setIsOpen(false);
   };
 
-  return (
+console.log('🔥 role in UserMenu:', role);
+console.log('🔥 сравнение:', role === 'admin');
+  
+return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -58,6 +62,16 @@ export function UserMenu({ username, onNavigate, onLogout }: UserMenuProps) {
           >
             Настройки
           </button>
+
+          {role === 'admin' && (
+            <button
+              onClick={() => handleMenuClick(() => onNavigate('admin'))}
+              className="w-full text-left px-4 py-2 hover:bg-gray-100 text-purple-600 font-semibold transition-colors"
+            >
+              ⚙️ Админ-панель
+            </button>
+          )}
+
           <hr className="my-2" />
           <button
             onClick={() => handleMenuClick(onLogout)}

@@ -1,12 +1,10 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, status, Security
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, status, Security, APIRouter, Request
 from fastapi.responses import JSONResponse
-from fastapi import APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 import sqlite3
 import datetime
-from contextlib import contextmanager
 import uvicorn
 import jwt 
 from jwt.exceptions import InvalidTokenError
@@ -14,10 +12,121 @@ import hashlib
 import secrets
 import requests
 import base64
-from PIL import Image
-from plantid_apikey import api_key
-import io
+from protctd_keys import api_key
+import logging
 import os
+from fastapi.staticfiles import StaticFiles  
+from enum import Enum
+from services import AuthService, get_auth_service
+from common import get_db, ALGORITHM, SECRET_KEY, verify_password, hash_password
+
+
+os.makedirs("uploads", exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
+#==== Roles =====
+class UserRole(str, Enum):
+    GUEST = "guest"
+    USER = "user"
+    ADMIN = "admin"
+
+#права досутпа
+class Permission(str, Enum):
+    # Анализы
+    ANALYSIS_CREATE = "analysis:create"
+    ANALYSIS_READ_OWN = "analysis:read_own"
+    ANALYSIS_READ_ALL = "analysis:read_all"
+    ANALYSIS_UPDATE_OWN = "analysis:update_own"
+    ANALYSIS_UPDATE_ALL = "analysis:update_all"
+    ANALYSIS_DELETE_OWN = "analysis:delete_own"
+    ANALYSIS_DELETE_ALL = "analysis:delete_all"
+    
+    # Пользователи
+    USER_READ_OWN = "user:read_own"
+    USER_READ_ALL =  "user:read_all"         
+    USER_UPDATE_OWN = "user:update_own"
+    USER_UPDATE_ALL = "user:update_all"
+    USER_DELETE_OWN = "user:delete_own"
+    USER_DELETE_ALL = "user:delete_all"
+    
+    # Администрирование
+    #ADMIN_ACCESS = "admin:access"
+    ROLE_MANAGE = "role:manage"
+
+#соотношение прав к ролям с помощью словаря
+ROLE_PERMISSIONS = {
+    UserRole.GUEST: [
+        Permission.ANALYSIS_CREATE,  
+    ],
+
+    UserRole.USER: [
+        Permission.ANALYSIS_CREATE,
+        Permission.ANALYSIS_READ_OWN,
+        Permission.ANALYSIS_UPDATE_OWN,
+        Permission.ANALYSIS_DELETE_OWN,
+        Permission.USER_UPDATE_OWN,
+        Permission.USER_DELETE_OWN,
+    ],
+
+    UserRole.ADMIN: [
+        Permission.ANALYSIS_CREATE,
+        Permission.ANALYSIS_READ_ALL,
+        Permission.ANALYSIS_READ_OWN,      
+        Permission.ANALYSIS_UPDATE_ALL,
+        Permission.ANALYSIS_DELETE_ALL,
+        Permission.USER_UPDATE_ALL,
+        Permission.USER_READ_ALL,
+        Permission.USER_DELETE_ALL,
+        Permission.ROLE_MANAGE,
+        Permission.ANALYSIS_UPDATE_OWN,
+        Permission.ANALYSIS_DELETE_OWN,
+        Permission.USER_UPDATE_OWN,
+        Permission.USER_DELETE_OWN,
+    ]
+}
+
+def require_permission(required_permission: Permission):
+    async def dependency(current_user: dict = Depends(get_current_user)): #функция выполнится успешно только если get_current_user выполнится без исключений и передастся в параметр current_user текущий пользователь
+        if not current_user:
+            raise HTTPException(401, "Требуется авторизация")
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT role FROM users WHERE id = ?",
+                (current_user["id"],)
+            )
+            row = cursor.fetchone()  
+            user_role = row[0] if row else None  
+        
+        if required_permission not in ROLE_PERMISSIONS.get(UserRole(user_role), []):
+            raise HTTPException(403, f"Нужно право: {required_permission.value}")
+        
+        return current_user
+    
+    return dependency
+
+# Утилита для проверки прав
+def check_permission(user_id: int, required_permission: Permission) -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT role FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()  
+        user_role = row[0] if row else None  
+    
+    user_permissions = ROLE_PERMISSIONS.get(UserRole(user_role), [])
+    return required_permission in user_permissions
+
+
+#==== Roles =====
 
 
 #Конфигурация Plant.id API
@@ -85,50 +194,43 @@ def analyze_plant_disease(image_bytes: bytes) -> dict:
         return {"error": f"Внутренняя ошибка: {str(e)}"}
 
 #НАСТРОЙКИ БЕЗОПАСНОСТИ
-# Секретный ключ для подписи JWT (в продакшене хранить в .env!)
-SECRET_KEY = secrets.token_hex(32)  # Генерируем случайный ключ
-ALGORITHM = "HS256"  # Алгоритм шифрования
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Время жизни токена
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Время жизни токена
 
 # Создаем security схему для авторизации
 security = HTTPBearer()
 
-#импорт нейросети
-#from neuro_network.model import analyze_image
-
 app = FastAPI(title="GreenyDoc", version="1.0.0")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# @app.middleware("http")
+# async def db_session_middleware(request: Request, call_next):
+#     # Создаём соединение и сохраняем в request.state
+#     request.state.db = get_db_con()
+#     response = await call_next(request)
+#     # Закрываем соединение после ответа
+#     if hasattr(request.state, "db"):
+#         request.state.db.close()
+#     return response
 
 api_router = APIRouter()
 
 #НАСТРОЙКА БАЗЫ ДАННЫХ SQLite
 DATABASE_URL = "greenydoc.db"
 
-@contextmanager
-def get_db():
-    """Контекстный менеджер для работы с базой данных"""
-    conn = sqlite3.connect(DATABASE_URL)
-    conn.row_factory = sqlite3.Row  # Чтобы возвращать словари
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+
 
 def init_db():
     """Инициализация базы данных при старте"""
     with get_db() as conn:
         cursor = conn.cursor()
-        #для исправления ошибок во время разработки-тестировки
-        # cursor.execute("DROP TABLE IF EXISTS revoked_tokens")
-        # cursor.execute("DROP TABLE IF EXISTS plant_analyses")
-        # cursor.execute("DROP TABLE IF EXISTS users")
-        # Таблица пользователей (теперь с хэшированными паролями)
+        # Таблица пользователей 
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,  
             salt TEXT NOT NULL,  
+            role TEXT NOT NULL DEFAULT 'user',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
@@ -142,7 +244,22 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
         ''')
-        
+        #таблица отозванных access токенов нужна именно для того, чтобы можно было сделать токен недействительным раньше срока его истечения ( с помощью логаута), это полезно, например, при попадании токена к злоумышленнику, чтобы сразу после логаута пользователь смог пресечь вредоносную деятельность,
+        # а не чтобы у злоумышленника ещё какое то время был доступ по токену в любом случае. каждый раз при попытке воспользоваться access токеном сервер проверяет не только не истёк ли он, но и не находится ли он в списке отозванных. 
+
+        # refresh_tokens
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            revoked BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+        ''')
+
         # Таблица анализов растений
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS plant_analyses (
@@ -162,6 +279,12 @@ def init_db():
         )
         ''')
 
+        # Создаем администратора по умолчанию 
+        cursor.execute('''
+        INSERT OR IGNORE INTO users (username, password_hash, salt, role) 
+        VALUES ('admin1', ?, ?, 'admin')
+        ''', hash_password("admin256")) #если админ с таким именем уже есть, то будет при попытке создания вылетать ошибка и благодаря ignore ошибка будет просто игнорироваться и ничего не произойдёт.
+
 # Инициализируем базу при старте
 init_db()
 
@@ -179,17 +302,24 @@ def hash_password(password: str, salt: str = None) -> tuple:
     hashed = hashlib.sha256((password + salt).encode()).hexdigest()
     return hashed, salt
 
-def verify_password(password: str, hashed_password: str, salt: str) -> bool:
-    """Проверка пароля"""
-    test_hash, _ = hash_password(password, salt)
-    return test_hash == hashed_password
 
 def create_access_token(data: dict) -> str:
     """
     Создание JWT токена.
-    data обычно содержит user_id, username и другие claim'ы
+    
     """
     to_encode = data.copy()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT role FROM users WHERE id = ?",
+            (data["user_id"],)
+        )
+        user_role = cursor.fetchone()["role"]
+    
+    to_encode["role"] = user_role #добавляем в данные пользователя роль на 
+    #этом этапе для безопасности, чтобы сам пользователь свою роль передать не мог
     
     # Добавляем время истечения токена
     expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
@@ -263,7 +393,7 @@ async def get_current_user(
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, username FROM users WHERE id = ?",
+            "SELECT id, username, role FROM users WHERE id = ?",
             (payload.get("user_id"),)
         )
         user = cursor.fetchone()
@@ -278,6 +408,7 @@ async def get_current_user(
     return {
         "id": user["id"],
         "username": user["username"],
+        "role": user["role"],
         "token_payload": payload
     }
 
@@ -295,14 +426,15 @@ app.add_middleware(
     allow_headers=["*"],  # Разрешаем все заголовки
 )
 
+
+
 # Trusted Host middleware - защита от host header атак
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "::1"]
+    allowed_hosts=["localhost", "127.0.0.1", "*"],  # ← allowed_hosts!
 )
 
 #МОДЕЛИ ДАННЫХ 
-
 class UserRegister(BaseModel):
     username: str
     password: str
@@ -315,15 +447,34 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     """Модель для ответа с токеном"""
     access_token: str
+    refresh_token: str 
     token_type: str = "bearer"
     expires_in: int = ACCESS_TOKEN_EXPIRE_MINUTES * 60  # в секундах
     user_id: int
     username: str
+    role: str  
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+class UserWithRole(BaseModel):
+    id: int
+    username: str
+    role: str
+    created_at: str
+
+class UpdateUserRoleRequest(BaseModel):
+    user_id: int
+    new_role: UserRole
 
 class TokenData(BaseModel):
     """Модель данных внутри токена"""
     user_id: int
     username: str
+    role: str
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
@@ -354,6 +505,7 @@ class AnalysisResponse(BaseModel):
     success: bool
     analysis_result: Optional[AnalysisResult] = None
     error: Optional[str] = None
+    message: Optional[str] = None 
 
 class HistoryItem(BaseModel):
     id: int
@@ -373,7 +525,7 @@ class MessageResponse(BaseModel):
 #МОДЕЛИ ДЛЯ CRUD
 class AnalysisCreateRequest(BaseModel):
     user_id: Optional[int] = None
-    session_token: Optional[str] = None  # Для неавторизованных пользователей
+    session_token: Optional[str] = None  
 
 class AnalysisUpdateRequest(BaseModel):
     disease_name: Optional[str] = None
@@ -383,9 +535,9 @@ class AnalysisDBResponse(BaseModel):
     id: int
     user_id: int
     image_path: str
-    image_url: str  # ← ДОБАВЬТЕ ЭТО ПОЛЕ (обязательное)
+    image_url: str  
     disease_name: Optional[str] = None
-    diagnosis: Optional[str] = None  # ← ДОБАВЬТЕ ЭТО ПОЛЕ
+    diagnosis: Optional[str] = None  
     reference_link: Optional[str] = None
     treatment_link: Optional[str] = None
     status: str
@@ -423,7 +575,9 @@ def ready_check():
 #АВТОРИЗАЦИОННЫЕ ЭНДПОЙНТЫ 
 
 @api_router.post("/api/auth/register", response_model=Token)
-async def register_user(user_data: UserRegister):
+async def register_user(user_data: UserRegister,
+auth_service: AuthService = Depends(get_auth_service)
+):
     """Регистрация нового пользователя с возвратом JWT токена"""
     if user_data.password != user_data.confirm_password:
         raise HTTPException(
@@ -435,125 +589,96 @@ async def register_user(user_data: UserRegister):
         # Хэшируем пароль
         password_hash, salt = hash_password(user_data.password)
         
-        # Сохраняем в SQLite
+        # Сохраняем в SQLite (роль по умолчанию 'user')
         with get_db() as conn:
             cursor = conn.cursor()
+
+            cursor.execute("SELECT id FROM users WHERE username = ?", (user_data.username,))
+            if cursor.fetchone():
+                raise HTTPException(400, "Пользователь уже существует")
+            
             cursor.execute(
-                "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-                (user_data.username, password_hash, salt)
+                "INSERT INTO users (username, password_hash, salt, role) VALUES (?, ?, ?, ?)",
+                (user_data.username, password_hash, salt, UserRole.USER.value)
             )
             user_id = cursor.lastrowid
-        
-        # Создаем JWT токен
-        token_data = {"user_id": user_id, "username": user_data.username}
-        access_token = create_access_token(data=token_data)
-        
-        return Token(
-            access_token=access_token,
-            user_id=user_id,
-            username=user_data.username
-        )
-        
-    except sqlite3.IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пользователь уже существует"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
 
-@api_router.post("/api/auth/login", response_model=Token)
-async def login_user(user_data: UserLogin):
-    """Вход пользователя с возвратом JWT токена"""
-    try:
-        # Ищем пользователя
-        with get_db() as conn:
-            cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, username, password_hash, salt FROM users WHERE username = ?",
-                (user_data.username,)
+                "SELECT role FROM users WHERE id = ?",
+                (user_id,)
             )
-            user = cursor.fetchone()
+            role = cursor.fetchone()["role"]
         
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный логин или пароль"
-            )
-        
-        # Проверяем пароль
-        if not verify_password(user_data.password, user["password_hash"], user["salt"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный логин или пароль"
-            )
-        
-        # Создаем JWT токен
-        token_data = {"user_id": user["id"], "username": user["username"]}
-        access_token = create_access_token(data=token_data)
+        # Создаем JWT токен с ролью
+        access_token = auth_service.create_access_token(user_id, user_data.username, role)
+        refresh_token = auth_service.create_refresh_token(user_id)
         
         return Token(
             access_token=access_token,
-            user_id=user["id"],
-            username=user["username"]
+            refresh_token=refresh_token,
+            user_id=user_id,
+            username=user_data.username,
+            role=role
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(500, "Ошибка сервера")
+    
+@api_router.post("/api/auth/login", response_model=Token)
+async def login_user(
+    user_data: UserLogin,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Вход с выдачей access + refresh токенов"""
+    user = auth_service.authenticate(user_data.username, user_data.password)
+    if not user:
+        raise HTTPException(401, "Неверный логин или пароль")
+    
+    access_token = auth_service.create_access_token(user["id"], user["username"], user["role"])
+    refresh_token = auth_service.create_refresh_token(user["id"])
+    
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,  # ← добавить поле в модель Token
+        user_id=user["id"],
+        username=user["username"],
+        role=user["role"],
+        expires_in=15 * 60
+    )
 
 @api_router.post("/api/auth/logout", response_model=MessageResponse)
-async def logout_user(current_user: dict = Depends(get_current_user)):
-    """
-    Выход пользователя - отзыв токена.
-    Требует авторизации (токен в заголовке Authorization: Bearer <token>)
-    """
-    try:
-        # Получаем токен из контекста (в реальном приложении нужно передавать токен)
-        # Для демонстрации просто возвращаем успех
-        # В реальном приложении нужно получить токен из запроса и добавить в revoked_tokens
-        
-        return MessageResponse(
-            success=True, 
-            message="Выход выполнен успешно. Токен будет отозван при следующем запросе."
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+async def logout_user(
+    request: LogoutRequest,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Выход - отзыв refresh токена"""
+    auth_service.logout(request.refresh_token)
+    return MessageResponse(success=True, message="Вы успешно вышли")
 
 @api_router.post("/api/auth/refresh", response_model=Token)
-async def refresh_token(current_user: dict = Depends(get_current_user)):
-    """
-    Обновление JWT токена.
-    Принимает старый токен, возвращает новый.
-    """
-    try:
-        # Создаем новый токен с теми же данными
-        token_data = {
-            "user_id": current_user["id"],
-            "username": current_user["username"]
-        }
-        access_token = create_access_token(data=token_data)
-        
-        return Token(
-            access_token=access_token,
-            user_id=current_user["id"],
-            username=current_user["username"]
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+async def refresh_token(
+    request: RefreshRequest,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Обновление access токена через refresh токен"""
+    new_access_token = auth_service.refresh_access_token(request.refresh_token)
+    
+    # Опционально: ротация refresh токена
+    new_refresh_token = auth_service.rotate_refresh_token(request.refresh_token)
+    
+    # Получаем данные пользователя из нового access токена
+    payload = jwt.decode(new_access_token, SECRET_KEY, algorithms=[ALGORITHM])
+    
+    return Token(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        user_id=payload["user_id"],
+        username=payload["username"],
+        role=payload["role"],
+        expires_in=15 * 60
+    )
 
 #ЗАЩИЩЕННЫЕ ЭНДПОЙНТЫ (требуют авторизации) 
 
@@ -607,11 +732,20 @@ async def change_password(
         )
 
 @api_router.post("/api/user/delete-account", response_model=MessageResponse)
-async def delete_account(current_user: dict = Depends(get_current_user)):
+async def delete_account(current_user: dict = Depends(get_current_user),
+auth_service: AuthService = Depends(get_auth_service)             
+):
     """Удаление аккаунта - требует авторизации"""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
+
+            # 1. Отзываем все refresh tokens пользователя
+            cursor.execute(
+                "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?",
+                (current_user["id"],)
+            )
+
             # Удаляем анализы пользователя
             cursor.execute(
                 "DELETE FROM plant_analyses WHERE user_id = ?",
@@ -623,7 +757,7 @@ async def delete_account(current_user: dict = Depends(get_current_user)):
                 (current_user["id"],)
             )
             
-            if cursor.rowcount == 0:
+            if cursor.rowcount == 0: #если количество строк, изменённых последним execute delete запросом равно 0, то значит этого пользователя и не было в таблице, следовательно выкидываем исключение 
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Пользователь не найден"
@@ -633,10 +767,7 @@ async def delete_account(current_user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e))
 
 # CRUD ЭНДПОЙНТЫ С АВТОРИЗАЦИЕЙ
 async def optional_auth(
@@ -671,13 +802,18 @@ async def optional_auth(
     except Exception:
         # Любая ошибка = гость
         return None
-# CREATE - Создание нового анализа (требует авторизации)
+    
+# CREATE - Создание нового анализа 
 @api_router.post("/api/analyses", response_model=AnalysisResponse)
 async def create_analysis(
     file: UploadFile = File(...),
-    current_user: Optional[dict] = Depends(optional_auth)  # Новая опциональная зависимость
+    current_user: Optional[dict] = Depends(optional_auth)  
 ):
-    """Анализ изображения растения (работает для гостей и авторизованных)"""
+    """
+    Анализ изображения растения. (объединённый)
+    Для гостей - только анализ без сохранения. 
+    Для авторизованных пользователей: анализ, а также сохранение в историю
+    """
     try:
         image_bytes = await file.read()
         
@@ -689,7 +825,7 @@ async def create_analysis(
         if "error" in ai_result:
             return AnalysisResponse(success=False, error=ai_result["error"])
         
-        # Форматирование результата (ваш существующий код)
+        # Форматирование результата (общая логика для всех)
         if not ai_result["is_healthy"] and ai_result["diseases"]:
             disease = ai_result["diseases"][0]
             analysis_result = AnalysisResult(
@@ -704,8 +840,21 @@ async def create_analysis(
                 disease_name=f"Растение здорово! Определено: {ai_result['plant_name']}"
             )
         
-        # Сохраняем ТОЛЬКО если пользователь авторизован
-        if current_user:  # None для гостей
+        # Сохраняем только если пользователь авторизован
+        if current_user:
+            # Сохраняем анализ
+            import os
+            import uuid
+            
+            os.makedirs("uploads", exist_ok=True)
+            
+            file_extension = os.path.splitext(file.filename)[1] or '.jpg'
+            unique_filename = f"{uuid.uuid4()}{file_extension}"
+            file_path = f"uploads/{unique_filename}"
+            
+            with open(file_path, "wb") as f:
+                f.write(image_bytes)
+            
             with get_db() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -715,20 +864,29 @@ async def create_analysis(
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     current_user["id"],
-                    f"uploads/{file.filename}",
-                    f"/uploads/{file.filename}",
+                    file_path,
+                    f"/uploads/{unique_filename}",
                     analysis_result.disease_name,
                     ai_result["plant_name"],
                     "disease_found" if not ai_result["is_healthy"] else "no_disease",
                     analysis_result.reference_link,
                     analysis_result.treatment_link,
                     analysis_result.status,
-                    datetime.now().strftime("%Y-%m-%d")
+                    datetime.datetime.now().strftime("%Y-%m-%d") 
                 ))
+                conn.commit()
+            
+            return AnalysisResponse(
+                success=True,
+                analysis_result=analysis_result,
+                message="Анализ сохранен в историю"
+            )
         
+        # Для гостей - просто возвращаем результат
         return AnalysisResponse(
             success=True,
-            analysis_result=analysis_result  # Pydantic модель AnalysisResult
+            analysis_result=analysis_result,
+            message="Войдите в аккаунт, чтобы сохранять анализы в историю"
         )
         
     except Exception as e:
@@ -737,8 +895,14 @@ async def create_analysis(
             error=str(e)
         )
     
+# Просмотр своих анализов
 @api_router.get("/api/analyses/my", response_model=List[dict])
-async def read_my_analyses(current_user: dict = Depends(get_current_user)):
+async def read_my_analyses(
+    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)) # FastAPI получает request
+# FastAPI смотрит: "для этого эндпойнта есть зависимость dependency"
+# FastAPI вызывает dependency и САМ ПЕРЕДАЕТ в неё current_user:
+
+):
     """Получение всех анализов текущего пользователя"""
     try:
         with get_db() as conn:
@@ -760,29 +924,71 @@ async def read_my_analyses(current_user: dict = Depends(get_current_user)):
             )
             analyses = cursor.fetchall()
         
-        # Преобразуем в словарь с правильными именами полей
         result = []
         for a in analyses:
             result.append({
-                "id": str(a['id']),  # Конвертируем в string
+                "id": str(a['id']),
                 "image_url": a['image_url'] or "",
                 "disease_name": a['disease_name'] or "",
                 "status": a['status'] or "unknown",
                 "created_at": a['created_at'],
                 "diagnosis": a['diagnosis'] or ""
             })
-        
+
         return result
         
     except Exception as e:
         print(f"Error in read_my_analyses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+# Просмотр всех анализов (только админ)
+@api_router.get("/api/analyses/all", response_model=List[dict])
+async def read_all_analyses(
+    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_ALL))
+):
+    """Получение всех анализов всех пользователей (только админ)"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    pa.id,
+                    pa.image_url,
+                    pa.disease_name,
+                    pa.status,
+                    pa.created_at,
+                    pa.diagnosis,
+                    u.username as owner
+                FROM plant_analyses pa
+                JOIN users u ON pa.user_id = u.id
+                ORDER BY pa.created_at DESC
+            """)
+            analyses = cursor.fetchall()
+        
+        result = []
+        for a in analyses:
+            result.append({
+                "id": str(a['id']),
+                "image_url": a['image_url'] or "",
+                "disease_name": a['disease_name'] or "",
+                "status": a['status'] or "unknown",
+                "created_at": a['created_at'],
+                "diagnosis": a['diagnosis'] or "",
+                "owner": a['owner'] or ""
+            })
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error in read_all_analyses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
     #READ - one user analyses
 @api_router.get("/api/analyses/{analysis_id}", response_model=AnalysisDBResponse)
 async def read_analysis(
     analysis_id: int,
-    current_user: dict = Depends(get_current_user)  # ← Требуем авторизации
+    current_user: dict = Depends(get_current_user)  #Требуем авторизации (если авторизация не прошла успешно, то функция не выполнится)
 ):
     """Получение конкретного анализа по ID (только свои анализы)"""
     try:
@@ -790,7 +996,7 @@ async def read_analysis(
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM plant_analyses WHERE id = ? AND user_id = ?",
-                (analysis_id, current_user["id"])  # ← Проверяем что анализ принадлежит пользователю
+                (analysis_id, current_user["id"])  # Проверяем что анализ принадлежит пользователю
             )
             analysis = cursor.fetchone()
             
@@ -800,7 +1006,7 @@ async def read_analysis(
                     detail="Анализ не найден или у вас нет доступа"
                 )
         
-        # СОЗДАЁМ ПОЛНЫЙ image_url ЕСЛИ НУЖНО
+        # СОЗДАЁМ ПОЛНЫЙ image_url 
         image_url = analysis['image_url']
         if not image_url and analysis['image_path']:
             image_url = f"/{analysis['image_path'].lstrip('/')}"
@@ -809,9 +1015,9 @@ async def read_analysis(
             id=analysis['id'],
             user_id=analysis['user_id'],
             image_path=analysis['image_path'],
-            image_url=image_url,  # ← Теперь есть!
+            image_url=image_url,  
             disease_name=analysis['disease_name'],
-            diagnosis=analysis['diagnosis'],  # ← Теперь есть!
+            diagnosis=analysis['diagnosis'],  
             reference_link=analysis['reference_link'],
             treatment_link=analysis['treatment_link'],
             status=analysis['status'],
@@ -823,27 +1029,40 @@ async def read_analysis(
         raise HTTPException(status_code=500, detail=str(e))
     
 
-# UPDATE - Обновление анализа (только свои анализы)
+# UPDATE - 
+# Обновление анализа с проверкой владельца
 @api_router.put("/api/analyses/{analysis_id}", response_model=MessageResponse)
 async def update_analysis(
     analysis_id: int,
     update_data: AnalysisUpdateRequest,
-    current_user: dict = Depends(get_current_user)  # ← Требуем авторизации
+    current_user: dict = Depends(get_current_user)
 ):
-    """Обновление анализа (только свои анализы)"""
+    """Обновление анализа"""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
             
-            # Проверяем существование и принадлежность
+            # Проверяем существование
             cursor.execute(
-                "SELECT id FROM plant_analyses WHERE id = ? AND user_id = ?",
-                (analysis_id, current_user["id"])
+                "SELECT user_id FROM plant_analyses WHERE id = ?",
+                (analysis_id,)
             )
-            if not cursor.fetchone():
+            analysis = cursor.fetchone()
+            
+            if not analysis:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Анализ не найден или у вас нет прав"
+                    detail="Анализ не найден"
+                )
+            
+            # Проверяем права
+            is_owner = analysis["user_id"] == current_user["id"]
+            can_update_all = check_permission(current_user["id"], Permission.ANALYSIS_UPDATE_ALL)
+            
+            if not (is_owner and check_permission(current_user["id"], Permission.ANALYSIS_UPDATE_OWN)) and not can_update_all:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Недостаточно прав для обновления этого анализа"
                 )
             
             # Формируем запрос обновления
@@ -860,10 +1079,14 @@ async def update_analysis(
             
             if updates:
                 params.append(analysis_id)
-                cursor.execute(
-                    f"UPDATE plant_analyses SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
-                    params + [current_user["id"]]
-                )
+                query = f"UPDATE plant_analyses SET {', '.join(updates)} WHERE id = ?"
+                
+                # Если пользователь не админ, добавляем проверку владельца
+                if not can_update_all:
+                    query += " AND user_id = ?"
+                    params.append(current_user["id"])
+                
+                cursor.execute(query, params)
         
         return MessageResponse(success=True, message="Анализ обновлен")
     except HTTPException:
@@ -871,20 +1094,51 @@ async def update_analysis(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# DELETE - Удаление анализа (только свои анализы)
+# DELETE - 
+# Удаление анализа с проверкой прав
 @api_router.delete("/api/analyses/{analysis_id}", response_model=MessageResponse)
 async def delete_analysis(
     analysis_id: int,
-    current_user: dict = Depends(get_current_user)  # ← Требуем авторизации
+    current_user: dict = Depends(get_current_user)
 ):
-    """Удаление анализа (только свои анализы)"""
+    """Удаление анализа"""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
+            
+            # Проверяем существование
             cursor.execute(
-                "DELETE FROM plant_analyses WHERE id = ? AND user_id = ?",
-                (analysis_id, current_user["id"])  # ← Проверяем принадлежность
+                "SELECT user_id FROM plant_analyses WHERE id = ?",
+                (analysis_id,)
             )
+            analysis = cursor.fetchone()
+            
+            if not analysis:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Анализ не найден"
+                )
+            
+            # Проверяем права
+            is_owner = analysis["user_id"] == current_user["id"]
+            can_delete_all = check_permission(current_user["id"], Permission.ANALYSIS_DELETE_ALL)
+            
+            if not is_owner and not can_delete_all:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Недостаточно прав для удаления этого анализа"
+                )
+            
+            # Формируем запрос удаления
+            query = "DELETE FROM plant_analyses WHERE id = ?"
+            params = [analysis_id]
+            
+            # Если пользователь не админ, добавляем проверку владельца
+            if not can_delete_all:
+                query += " AND user_id = ?"
+                params.append(current_user["id"])
+            
+            cursor.execute(query, params)
             
             if cursor.rowcount == 0:
                 raise HTTPException(
@@ -898,6 +1152,117 @@ async def delete_analysis(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# получение информации о роли пользователя (админ)
+@api_router.get("/api/admin/users", response_model=List[UserWithRole])
+async def get_all_users(
+    current_user: dict = Depends(require_permission(Permission.USER_READ_ALL))
+):
+    """Получение списка всех пользователей (только админ)"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, username, role, created_at FROM users ORDER BY created_at DESC"
+            )
+            users = cursor.fetchall()
+        
+        result = []
+        for user in users:
+            result.append({
+                "id": user["id"],
+                "username": user["username"],
+                "role": user["role"],
+                "created_at": user["created_at"]
+            })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Изменение роли пользователя (админ)
+@api_router.put("/api/admin/users/{user_id}/role", response_model=MessageResponse)
+async def update_user_role(
+    user_id: int,
+    role_request: UpdateUserRoleRequest,
+    current_user: dict = Depends(require_permission(Permission.ROLE_MANAGE))
+):
+    """Изменение роли пользователя (только админ)"""
+    try:
+        # Нельзя изменить роль самого себя
+        if user_id == current_user["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Нельзя изменить свою собственную роль"
+            )
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем существование пользователя
+            cursor.execute(
+                "SELECT id FROM users WHERE id = ?",
+                (user_id,)
+            )
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Пользователь не найден"
+                )
+            
+            # Обновляем роль
+            cursor.execute(
+                "UPDATE users SET role = ? WHERE id = ?",
+                (role_request.new_role.value, user_id)
+            )
+        
+        return MessageResponse(success=True, message="Роль пользователя обновлена")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Удаление пользователя (админ)
+@api_router.delete("/api/admin/users/{user_id}", response_model=MessageResponse)
+async def delete_user_account(
+    user_id: int,
+    current_user: dict = Depends(require_permission(Permission.USER_DELETE_ALL))
+):
+    """Удаление аккаунта пользователя (только админ)"""
+    try:
+        # Нельзя удалить самого себя
+        if user_id == current_user["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Нельзя удалить свой собственный аккаунт"
+            )
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Удаляем анализы пользователя
+            cursor.execute(
+                "DELETE FROM plant_analyses WHERE user_id = ?",
+                (user_id,)
+            )
+            
+            # Удаляем пользователя
+            cursor.execute(
+                "DELETE FROM users WHERE id = ?",
+                (user_id,)
+            )
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Пользователь не найден"
+                )
+        
+        return MessageResponse(success=True, message="Аккаунт пользователя удален")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 #корневой эндпойнт
 @app.get("/")
 async def root():
@@ -905,9 +1270,7 @@ async def root():
         "message": "GreenyDoc API Server is running", 
         "docs": "http://localhost:8000/docs",
         "health_check": "http://localhost:8000/health/live",
-        "authentication": "JWT Bearer Token",
-        "public_endpoints": ["/health/*", "/api/analyze/public", "/api/auth/*"],
-        "protected_endpoints": ["/api/analyses/*", "/api/user/*"]
+        "authentication": "JWT Bearer Token"
     }
 
 #подключим роутер к приложению

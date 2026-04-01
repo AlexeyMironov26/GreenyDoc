@@ -4,54 +4,63 @@ import { HomePage } from '../components/HomePage';
 import { HistoryPage } from '../components/HistoryPage';
 import { SettingsPage } from '../components/SettingsPage';
 import { UserMenu } from '../components/UserMenu';
+import { AdminPanel } from '../components/AdminPanel';
 
 const backgroundImage = './images/background.png'
 const API_URL = 'http://localhost:8000'; // FastAPI сервер
 
-type Page = 'home' | 'login' | 'history' | 'settings';
+type Page = 'home' | 'login' | 'history' | 'settings'| 'admin';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [currentUser, setCurrentUser] = useState<{username: string, token: string, id: number} | null>(null);
+  const [currentPage, setCurrentPage] = useState<Page>('home'); 
+  const [currentUser, setCurrentUser] = useState<{
+    username: string, 
+    token: string,
+    id: number,
+    role?: string //необязательное поле 
+   } | null>(null);
 
+  //Восстановление сессии из localStorage
   useEffect(() => {
-    // Check if user is logged in (from localStorage)
-    const savedUser = localStorage.getItem('currentUser');
     const savedToken = localStorage.getItem('authToken');
+    const savedUsername = localStorage.getItem('username');
+    const savedUserId = localStorage.getItem('userId');
+    const savedRole = localStorage.getItem('userRole');
     
-    if (savedUser && savedToken) {
-      try {
-        const userData = JSON.parse(savedUser);
-        setCurrentUser({
-          username: userData.username,
-          token: savedToken,
-          id: userData.id
-        });
-      } catch (e) {
-        console.error('Error parsing saved user:', e);
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('authToken');
-      }
+    if (savedToken && savedUsername && savedUserId) {
+      setCurrentUser({
+        username: savedUsername,
+        token: savedToken,
+        id: Number(savedUserId),
+        role: savedRole || 'user' 
+      });
+      console.log('✅ Сессия восстановлена для:', savedUsername);
     }
   }, []);
 
-  const handleLogin = async (username: string, token: string, userId: number) => {
-    const userData = { username, token, id: userId };
-    setCurrentUser(userData);
-    localStorage.setItem('currentUser', JSON.stringify({ username, id: userId }));
-    localStorage.setItem('authToken', token);
+  //данные уже в localStorage
+  const handleLogin = (username: string, token: string, userId: number, role: string) => {
+    setCurrentUser({
+      username,
+      token,
+      id: userId,
+      role
+
+    });
     setCurrentPage('home');
   };
 
-  const handleLogout = async () => {
-    if (currentUser?.token) {
+  // handleLogout очищает все сохраненные данные
+
+
+const handleLogout = async () => {
+  const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
       try {
         await fetch(`${API_URL}/api/auth/logout`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${currentUser.token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ refresh_token: refreshToken})
         });
       } catch (error) {
         console.error('Logout error:', error);
@@ -59,8 +68,12 @@ export default function App() {
     }
     
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
+    // Очищаем все сохраненные данные
     localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userRole')
     setCurrentPage('home');
   };
 
@@ -80,8 +93,10 @@ export default function App() {
     }
     
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
+    // Очищаем все сохраненные данные
     localStorage.removeItem('authToken');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userId');
     setCurrentPage('home');
   };
 
@@ -121,7 +136,9 @@ export default function App() {
             
             {currentUser ? (
               <UserMenu
+                key={currentUser.role}
                 username={currentUser.username}
+                role={currentUser.role}
                 onNavigate={handleNavigate}
                 onLogout={handleLogout}
               />
@@ -157,7 +174,6 @@ export default function App() {
         {currentPage === 'history' && currentUser && (
           <HistoryPage 
             username={currentUser.username}
-            authToken={currentUser.token}
           />
         )}
 
@@ -168,6 +184,12 @@ export default function App() {
             onDeleteAccount={handleDeleteAccount}
           />
         )}
+
+        {currentPage === 'admin' && currentUser && (
+          <AdminPanel 
+            username={currentUser.username}
+          />
+          )}
       </div>
     </div>
   );

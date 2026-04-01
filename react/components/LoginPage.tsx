@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface LoginPageProps {
-  onLogin: (username: string, token: string, userId: number) => void;
+  onLogin: (username: string, token: string, userId: number, role: string) => void;
   onBack: () => void;
 }
 
@@ -16,7 +16,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
@@ -36,7 +36,13 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
       const data = await response.json();
 
       if (response.ok) {
-        onLogin(data.username, data.access_token, data.user_id);
+        localStorage.setItem('authToken', data.access_token);
+        localStorage.setItem('refreshToken', data.refresh_token); 
+        localStorage.setItem('username', data.username);
+        localStorage.setItem('userId', data.user_id.toString());
+        localStorage.setItem('userRole', data.role); 
+        
+        onLogin(data.username, data.access_token, data.user_id, data.role);
       } else {
         setError(data.detail || 'Ошибка входа');
       }
@@ -74,7 +80,11 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
       const data = await response.json();
 
       if (response.ok) {
-        onLogin(data.username, data.access_token, data.user_id);
+        localStorage.setItem('authToken', data.access_token);
+        localStorage.setItem('username', data.username);
+        localStorage.setItem('userId', data.user_id.toString());
+        
+        onLogin(data.username, data.access_token, data.user_id, data.role);
       } else {
         setError(data.detail || 'Ошибка регистрации');
       }
