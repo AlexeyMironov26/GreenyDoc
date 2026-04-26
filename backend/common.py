@@ -3,7 +3,19 @@ from contextlib import contextmanager
 from protctd_keys import secretKey
 import hashlib
 import secrets
+from fastapi import HTTPException
+from dotenv import load_dotenv
 
+load_dotenv() 
+ALLOWED_FILE_TYPES = ["image/jpeg", "image/jpg", "image/png"]
+MAX_FILE_SIZE = 10 * 1024 * 1024 
+
+def validate_file(content_type: str, file_size: int):
+    if content_type not in ALLOWED_FILE_TYPES:
+        raise HTTPException(400, f"Неподдерживаемый тип. Разрешены: {', '.join(ALLOWED_FILE_TYPES)}")
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(400, f"Файл слишком большой. Максимум {MAX_FILE_SIZE // (1024*1024)} MB")
+    
 @contextmanager
 def get_db():
     conn = sqlite3.connect("greenydoc.db", check_same_thread=False)  # ← Разрешаем

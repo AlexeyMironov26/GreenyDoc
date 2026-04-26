@@ -46,3 +46,10 @@ access токен - это токен, который используется �
 /logout — отзыв refresh token;
 
 /delete-account — отзыв сессий + удаление.
+
+Запуск MinIO:
+
+docker-compose up -d (перед выполнением команды нужно запустить приложение docker desktop, запускать нужно в той же папке, где находится файл docker-compose.yml)
+
+Остановка MinIO
+docker-compose down -d 

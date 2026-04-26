@@ -172,9 +172,7 @@ const handleLogout = async () => {
         )}
 
         {currentPage === 'history' && currentUser && (
-          <HistoryPage 
-            username={currentUser.username}
-          />
+          <HistoryPage/>
         )}
 
         {currentPage === 'settings' && currentUser && (

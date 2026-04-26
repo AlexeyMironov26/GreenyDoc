@@ -19,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from enum import Enum
 from services import AuthService, get_auth_service
 from common import get_db, ALGORITHM, SECRET_KEY, verify_password, hash_password
+from common import validate_file, MAX_FILE_SIZE
+from s3_service import upload_file, generate_presigned_url, delete_file
 
 
 os.makedirs("uploads", exist_ok=True)
@@ -202,15 +204,6 @@ security = HTTPBearer()
 
 app = FastAPI(title="GreenyDoc", version="1.0.0")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-# @app.middleware("http")
-# async def db_session_middleware(request: Request, call_next):
-#     # Создаём соединение и сохраняем в request.state
-#     request.state.db = get_db_con()
-#     response = await call_next(request)
-#     # Закрываем соединение после ответа
-#     if hasattr(request.state, "db"):
-#         request.state.db.close()
-#     return response
 
 api_router = APIRouter()
 
@@ -631,7 +624,7 @@ async def login_user(
     user_data: UserLogin,
     auth_service: AuthService = Depends(get_auth_service)
 ):
-    """Вход с выдачей access + refresh токенов"""
+    """Вход с выдачей access и  refresh токенов"""
     user = auth_service.authenticate(user_data.username, user_data.password)
     if not user:
         raise HTTPException(401, "Неверный логин или пароль")
@@ -641,7 +634,7 @@ async def login_user(
     
     return Token(
         access_token=access_token,
-        refresh_token=refresh_token,  # ← добавить поле в модель Token
+        refresh_token=refresh_token,  
         user_id=user["id"],
         username=user["username"],
         role=user["role"],
@@ -804,83 +797,86 @@ async def optional_auth(
         return None
     
 # CREATE - Создание нового анализа 
-@api_router.post("/api/analyses", response_model=AnalysisResponse)
-async def create_analysis(
-    file: UploadFile = File(...),
-    current_user: Optional[dict] = Depends(optional_auth)  
+@api_router.get("/api/analyses/my", response_model=dict)
+async def read_my_analyses(
+    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)),
+    page: int = 1,
+    limit: int = 10,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "DESC"
 ):
-    """
-    Анализ изображения растения. (объединённый)
-    Для гостей - только анализ без сохранения. 
-    Для авторизованных пользователей: анализ, а также сохранение в историю
-    """
+    # Валидация
+    if limit > 100:
+        limit = 100
+    allowed_sort_fields = ["created_at", "disease_name", "status"]
+    if sort_by not in allowed_sort_fields:
+        sort_by = "created_at"
+    if sort_order.upper() not in ["ASC", "DESC"]:
+        sort_order = "DESC"
+    
+    offset = (page - 1) * limit
+    
     try:
-        image_bytes = await file.read()
-        
-        if len(image_bytes) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Файл слишком большой")
-        
-        ai_result = analyze_plant_disease(image_bytes)
-        
-        if "error" in ai_result:
-            return AnalysisResponse(success=False, error=ai_result["error"])
-        
-        # Форматирование результата (общая логика для всех)
-        if not ai_result["is_healthy"] and ai_result["diseases"]:
-            disease = ai_result["diseases"][0]
-            analysis_result = AnalysisResult(
-                status="disease_found",
-                disease_name=f"{disease['name']} (вероятность: {disease['probability']:.0%})",
-                reference_link="https://plant.id/disease-info",
-                treatment_link="https://plant.id/treatment"
-            )
-        else:
-            analysis_result = AnalysisResult(
-                status="no_disease",
-                disease_name=f"Растение здорово! Определено: {ai_result['plant_name']}"
-            )
-        
-        # Сохраняем только если пользователь авторизован
-        if current_user:
-            # Сохраняем анализ
-            import os
-            import uuid
+        with get_db() as conn:
+            cursor = conn.cursor()
             
-            os.makedirs("uploads", exist_ok=True)
+            # Базовый запрос
+            query = """
+                SELECT id, image_path, disease_name, status, created_at, diagnosis
+                FROM plant_analyses 
+                WHERE user_id = ?
+            """
+            params = [current_user["id"]]
             
-            file_extension = os.path.splitext(file.filename)[1] or '.jpg'
-            unique_filename = f"{uuid.uuid4()}{file_extension}"
-            file_path = f"uploads/{unique_filename}"
+            # Фильтры
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            if search:
+                query += " AND (disease_name LIKE ? OR diagnosis LIKE ?)"
+                like = f"%{search}%"
+                params.extend([like, like])
             
-            with open(file_path, "wb") as f:
-                f.write(image_bytes)
+            # Подсчёт общего количества (учитывая фильтры)
+            count_query = f"SELECT COUNT(*) FROM ({query})"
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()[0]
             
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO plant_analyses 
-                    (user_id, image_path, image_url, disease_name, diagnosis, result, 
-                     reference_link, treatment_link, status, date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    current_user["id"],
-                    file_path,
-                    f"/uploads/{unique_filename}",
-                    analysis_result.disease_name,
-                    ai_result["plant_name"],
-                    "disease_found" if not ai_result["is_healthy"] else "no_disease",
-                    analysis_result.reference_link,
-                    analysis_result.treatment_link,
-                    analysis_result.status,
-                    datetime.datetime.now().strftime("%Y-%m-%d") 
-                ))
-                conn.commit()
+            # Сортировка и пагинация
+            sort_order_sql = "ASC" if sort_order.upper() == "ASC" else "DESC"
+            query += f" ORDER BY {sort_by} {sort_order_sql} LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
             
-            return AnalysisResponse(
-                success=True,
-                analysis_result=analysis_result,
-                message="Анализ сохранен в историю"
-            )
+            cursor.execute(query, params)
+            analyses = cursor.fetchall()
+        
+        result = []
+        for a in analyses:
+            image_url = generate_presigned_url(a["image_path"]) if a.get("image_path") else None
+            result.append({
+                "id": str(a["id"]),
+                "image_url": image_url,
+                "disease_name": a["disease_name"] or "",
+                "status": a["status"] or "unknown",
+                "created_at": a["created_at"],
+                "diagnosis": a["diagnosis"] or ""
+            })
+        
+        return {
+            "data": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": (total + limit - 1) // limit
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error in read_my_analyses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
         
         # Для гостей - просто возвращаем результат
         return AnalysisResponse(
@@ -898,44 +894,80 @@ async def create_analysis(
 # Просмотр своих анализов
 @api_router.get("/api/analyses/my", response_model=List[dict])
 async def read_my_analyses(
-    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)) # FastAPI получает request
+    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)), # FastAPI получает request
+    page: int = 1,
+    limit: int = 10,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "DESC"
 # FastAPI смотрит: "для этого эндпойнта есть зависимость dependency"
 # FastAPI вызывает dependency и САМ ПЕРЕДАЕТ в неё current_user:
-
 ):
+    # Валидация
+    if limit > 100:
+        limit = 100
+    allowed_sort = ["created_at", "disease_name", "status"]
+    if sort_by not in allowed_sort:
+        sort_by = "created_at"
+    if sort_order.upper() not in ["ASC", "DESC"]:
+        sort_order = "DESC"
+
+    offset = (page - 1) * limit
+
     """Получение всех анализов текущего пользователя"""
     try:
+        query = """
+        SELECT id, image_path, disease_name, status, created_at, diagnosis
+        FROM plant_analyses 
+        WHERE user_id = ?
+        """
+        params = [current_user["id"]]
+        
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if search:
+            query += " AND (disease_name LIKE ? OR diagnosis LIKE ?)"
+            like = f"%{search}%"
+            params.extend([like, like])
+        
+        allowed_sort = {"created_at": "created_at", "disease_name": "disease_name", "status": "status"}
+        sort_col = allowed_sort.get(sort_by, "created_at")
+        sort_order_sql = "ASC" if sort_order.upper() == "ASC" else "DESC"
+        query += f" ORDER BY {sort_col} {sort_order_sql} LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT 
-                    id,
-                    image_url,
-                    disease_name,
-                    status,
-                    created_at,
-                    diagnosis
-                FROM plant_analyses 
-                WHERE user_id = ? 
-                ORDER BY created_at DESC
-                """,
-                (current_user["id"],)
-            )
+            cursor.execute(query, params)
             analyses = cursor.fetchall()
+            
+            cursor.execute("SELECT COUNT(*) FROM plant_analyses WHERE user_id = ?", (current_user["id"],))
+            total = cursor.fetchone()[0]
         
         result = []
         for a in analyses:
+            # ГЕНЕРИРУЕМ СВЕЖУЮ PRESIGNED URL
+            image_url = generate_presigned_url(a["image_path"]) if a["image_path"] else None
             result.append({
-                "id": str(a['id']),
-                "image_url": a['image_url'] or "",
-                "disease_name": a['disease_name'] or "",
-                "status": a['status'] or "unknown",
-                "created_at": a['created_at'],
-                "diagnosis": a['diagnosis'] or ""
+                "id": str(a["id"]),
+                "image_url": image_url,
+                "disease_name": a["disease_name"] or "",
+                "status": a["status"] or "unknown",
+                "created_at": a["created_at"],
+                "diagnosis": a["diagnosis"] or ""
             })
-
-        return result
+        
+        return {
+            "data": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": (total + limit - 1) // limit
+            }
+        }
         
     except Exception as e:
         print(f"Error in read_my_analyses: {e}")
@@ -1100,7 +1132,7 @@ async def update_analysis(
 async def delete_analysis(
     analysis_id: int,
     current_user: dict = Depends(get_current_user)
-):
+): #depends выполняет функцию, в него переданную, когда приходит запрос, и возвращает результат
     """Удаление анализа"""
     try:
         with get_db() as conn:
@@ -1129,6 +1161,10 @@ async def delete_analysis(
                     detail="Недостаточно прав для удаления этого анализа"
                 )
             
+             # УДАЛЕНИЕ ИЗ MINIO
+            if analysis["image_path"]:
+                delete_file(analysis["image_path"])
+
             # Формируем запрос удаления
             query = "DELETE FROM plant_analyses WHERE id = ?"
             params = [analysis_id]
@@ -1139,7 +1175,8 @@ async def delete_analysis(
                 params.append(current_user["id"])
             
             cursor.execute(query, params)
-            
+            conn.commit()
+
             if cursor.rowcount == 0:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

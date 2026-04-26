@@ -3,11 +3,11 @@ from repositories import UserRepository, RefreshTokenRepository
 import datetime
 from fastapi import HTTPException, Depends
 import jwt
-from common import get_db_con, ALGORITHM, SECRET_KEY, verify_password
+from common import ALGORITHM, SECRET_KEY, verify_password
 
 # ========== DEPENDENCY INJECTION (DI) ==========
 
-# 2. Репозитории (зависят от соединения)
+# 2. Репозитории 
 def get_user_repo():
     return UserRepository()
 
@@ -15,7 +15,7 @@ def get_refresh_token_repo():
     return RefreshTokenRepository()
 
 
-# 3. Сервис (зависит от репозиториев)
+# 3. Сервис 
 def get_auth_service(
     user_repo: UserRepository = Depends(get_user_repo),
     refresh_repo: RefreshTokenRepository = Depends(get_refresh_token_repo)
