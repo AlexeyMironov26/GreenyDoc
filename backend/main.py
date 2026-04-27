@@ -205,6 +205,28 @@ security = HTTPBearer()
 app = FastAPI(title="GreenyDoc", version="1.0.0")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+#MIDDLEWARE
+
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+# CORS middleware - разрешает запросы с фронтенда
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы
+    allow_headers=["*"],  # Разрешаем все заголовки
+)
+
+
+
+# Trusted Host middleware - защита от host header атак
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["localhost", "127.0.0.1", "*"], 
+)
+
 api_router = APIRouter()
 
 #НАСТРОЙКА БАЗЫ ДАННЫХ SQLite
@@ -405,27 +427,7 @@ async def get_current_user(
         "token_payload": payload
     }
 
-#MIDDLEWARE
 
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-
-# CORS middleware - разрешает запросы с фронтенда
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
-    allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все методы
-    allow_headers=["*"],  # Разрешаем все заголовки
-)
-
-
-
-# Trusted Host middleware - защита от host header атак
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*"],  # ← allowed_hosts!
-)
 
 #МОДЕЛИ ДАННЫХ 
 class UserRegister(BaseModel):
@@ -797,86 +799,105 @@ async def optional_auth(
         return None
     
 # CREATE - Создание нового анализа 
-@api_router.get("/api/analyses/my", response_model=dict)
-async def read_my_analyses(
-    current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)),
-    page: int = 1,
-    limit: int = 10,
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    sort_by: str = "created_at",
-    sort_order: str = "DESC"
+@api_router.post("/api/analyses", response_model=AnalysisResponse)
+async def create_analysis(
+    file: UploadFile = File(...),
+    current_user: Optional[dict] = Depends(optional_auth)  
 ):
-    # Валидация
-    if limit > 100:
-        limit = 100
-    allowed_sort_fields = ["created_at", "disease_name", "status"]
-    if sort_by not in allowed_sort_fields:
-        sort_by = "created_at"
-    if sort_order.upper() not in ["ASC", "DESC"]:
-        sort_order = "DESC"
-    
-    offset = (page - 1) * limit
-    
+    print(f"🔥 current_user = {current_user}")
+    print(f"🔥 тип current_user = {type(current_user)}")
+    """
+    Анализ изображения растения. (объединённый)
+    Для гостей - только анализ без сохранения. 
+    Для авторизованных пользователей: анализ, а также сохранение в историю
+    """
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            
-            # Базовый запрос
-            query = """
-                SELECT id, image_path, disease_name, status, created_at, diagnosis
-                FROM plant_analyses 
-                WHERE user_id = ?
-            """
-            params = [current_user["id"]]
-            
-            # Фильтры
-            if status:
-                query += " AND status = ?"
-                params.append(status)
-            if search:
-                query += " AND (disease_name LIKE ? OR diagnosis LIKE ?)"
-                like = f"%{search}%"
-                params.extend([like, like])
-            
-            # Подсчёт общего количества (учитывая фильтры)
-            count_query = f"SELECT COUNT(*) FROM ({query})"
-            cursor.execute(count_query, params)
-            total = cursor.fetchone()[0]
-            
-            # Сортировка и пагинация
-            sort_order_sql = "ASC" if sort_order.upper() == "ASC" else "DESC"
-            query += f" ORDER BY {sort_by} {sort_order_sql} LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            
-            cursor.execute(query, params)
-            analyses = cursor.fetchall()
+        image_bytes = await file.read()
         
-        result = []
-        for a in analyses:
-            image_url = generate_presigned_url(a["image_path"]) if a.get("image_path") else None
-            result.append({
-                "id": str(a["id"]),
-                "image_url": image_url,
-                "disease_name": a["disease_name"] or "",
-                "status": a["status"] or "unknown",
-                "created_at": a["created_at"],
-                "diagnosis": a["diagnosis"] or ""
-            })
-        
-        return {
-            "data": result,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total,
-                "pages": (total + limit - 1) // limit
-            }
-        }
-        
-    except Exception as e:
-        print(f"Error in read_my_analyses: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # ВАЛИДАЦИЯ
+        validate_file(file.content_type, len(image_bytes))
+        print("сделали валидацию")
+        ai_result = analyze_plant_disease(image_bytes)
+        print("прошли ai анализ")
+        print(f"🔍 ai_result ПОЛНОСТЬЮ: {ai_result}")
+        if "error" in ai_result:
+            analysis_result = AnalysisResult(
+            status="no_disease",
+            disease_name="Тестовый анализ (API отключен)",
+            reference_link=None,
+            treatment_link=None
+        )
+        print("прошли проверку на ошибку в ai анализе")
+        #Т к у нас временная заглушка при ошибке связи с сервером плэнт айди, то пока закоментируем код, пытающийся извлекать параметры из результата от плэнтайди
+        # Форматирование результата (общая логика для всех)
+        # if not ai_result["is_healthy"] and ai_result["diseases"]:
+        #     disease = ai_result["diseases"][0]
+        #     analysis_result = AnalysisResult(
+        #         status="disease_found",
+        #         disease_name=f"{disease['name']} (вероятность: {disease['probability']:.0%})",
+        #         reference_link="https://plant.id/disease-info",
+        #         treatment_link="https://plant.id/treatment"
+        #     )
+        # else:
+        #     analysis_result = AnalysisResult(
+        #         status="no_disease",
+        #         disease_name=f"Растение здорово! Определено: {ai_result['plant_name']}"
+        #     )
+        print("перед каррент юзер")
+        print(f"🔥 current_user = {current_user}")
+        print(f"🔥 тип current_user = {type(current_user)}")
+        # Сохраняем только если пользователь авторизован
+        if current_user:
+            print("внутри каррент юзер")
+            file_key = upload_file(image_bytes, file.filename, file.content_type)
+            print("выполнили файл кей")
+            presigned_url = generate_presigned_url(file_key, expires_in=3600)
+            print("выполнили пресайнд юрл")
+            with get_db() as conn:
+                # print("внутри with get_db")
+                # print("🔍 ПРОВЕРКА ДАННЫХ ПЕРЕД ВСТАВКОЙ:")
+                # print(f"   user_id = {current_user['id']} (тип: {type(current_user['id'])})")
+                # print(f"   image_path = {file_key} (тип: {type(file_key)})")
+                # print(f"   presigned_url = {presigned_url[:50]}...")
+                # print(f"   disease_name = {analysis_result.disease_name}")
+                # print(f"   diagnosis = {ai_result['plant_name']}")
+                # print(f"   result = {'disease_found' if not ai_result['is_healthy'] else 'no_disease'}")
+                # print(f"   reference_link = {analysis_result.reference_link}")
+                # print(f"   treatment_link = {analysis_result.treatment_link}")
+                # print(f"   status = {analysis_result.status}")
+                # print(f"   date = {datetime.datetime.now().strftime('%Y-%m-%d')}")
+                cursor = conn.cursor()
+                try:
+                    cursor.execute('''
+                        INSERT INTO plant_analyses 
+                        (user_id, image_path, image_url, disease_name, diagnosis, result, 
+                        reference_link, treatment_link, status, date)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        current_user["id"],
+                        file_key, # сохраняем ключ MinIO
+                        presigned_url, # временная ссылка
+                        analysis_result.disease_name,
+                        "Неизвестное растение", # временная заглушка, ai_result["plant_name"],
+                        "disease_found",# пока плэнтайди не работает временная заглушка "disease_found" if not ai_result["is_healthy"] else "no_disease",
+                        analysis_result.reference_link,
+                        analysis_result.treatment_link,
+                        analysis_result.status,
+                        datetime.datetime.now().strftime("%Y-%m-%d") 
+                    ))
+                    conn.commit() 
+                    # print(f"✅ INSERT выполнен, lastrowid={cursor.lastrowid}")
+                    # print(f"✅ user_id={current_user['id']}, diagnosis={ai_result['plant_name']}")
+                except sqlite3.Error as e:
+                    print(f"❌ Ошибка SQLite: {e}")
+                    print(f"❌ Аргументы: {(...)}")
+                    conn.rollback()
+                    return AnalysisResponse(success=False, error=f"Ошибка БД: {e}")
+            return AnalysisResponse(
+                success=True,
+                analysis_result=analysis_result,
+                message="Анализ сохранен в историю"
+            )
         
         # Для гостей - просто возвращаем результат
         return AnalysisResponse(
@@ -886,13 +907,14 @@ async def read_my_analyses(
         )
         
     except Exception as e:
+        print(f"❌❌❌ КРИТИЧЕСКАЯ ОШИБКА В create_analysis: {type(e).__name__}: {e}")
         return AnalysisResponse(
             success=False,
             error=str(e)
         )
     
 # Просмотр своих анализов
-@api_router.get("/api/analyses/my", response_model=List[dict])
+@api_router.get("/api/analyses/my")
 async def read_my_analyses(
     current_user: dict = Depends(require_permission(Permission.ANALYSIS_READ_OWN)), # FastAPI получает request
     page: int = 1,
@@ -912,40 +934,50 @@ async def read_my_analyses(
         sort_by = "created_at"
     if sort_order.upper() not in ["ASC", "DESC"]:
         sort_order = "DESC"
-
+        
     offset = (page - 1) * limit
 
     """Получение всех анализов текущего пользователя"""
     try:
-        query = """
-        SELECT id, image_path, disease_name, status, created_at, diagnosis
-        FROM plant_analyses 
-        WHERE user_id = ?
-        """
+        # Базовый запрос для фильтрации
+        where_clause = "WHERE user_id = ?"
         params = [current_user["id"]]
         
         if status:
-            query += " AND status = ?"
+            where_clause += " AND status = ?"
             params.append(status)
         if search:
-            query += " AND (disease_name LIKE ? OR diagnosis LIKE ?)"
+            where_clause += " AND (disease_name LIKE ? OR diagnosis LIKE ?)"
             like = f"%{search}%"
             params.extend([like, like])
         
-        allowed_sort = {"created_at": "created_at", "disease_name": "disease_name", "status": "status"}
-        sort_col = allowed_sort.get(sort_by, "created_at")
+        # СЧИТАЕМ ОБЩЕЕ КОЛИЧЕСТВО С УЧЁТОМ ФИЛЬТРОВ
+        count_query = f"SELECT COUNT(*) FROM plant_analyses {where_clause}"
+        
+        # Запрос данных с сортировкой и пагинацией
+        allowed_sort_map = {"created_at": "created_at", "disease_name": "disease_name", "status": "status"}
+        sort_col = allowed_sort_map.get(sort_by, "created_at")
         sort_order_sql = "ASC" if sort_order.upper() == "ASC" else "DESC"
-        query += f" ORDER BY {sort_col} {sort_order_sql} LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+        
+        data_query = f"""
+            SELECT id, image_path, disease_name, status, created_at, diagnosis
+            FROM plant_analyses 
+            {where_clause}
+            ORDER BY {sort_col} {sort_order_sql}
+            LIMIT ? OFFSET ?
+        """
         
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute(query, params)
-            analyses = cursor.fetchall()
             
-            cursor.execute("SELECT COUNT(*) FROM plant_analyses WHERE user_id = ?", (current_user["id"],))
+            # Получаем общее количество (с учётом фильтров!)
+            cursor.execute(count_query, params)
             total = cursor.fetchone()[0]
-        
+            
+            # Получаем данные
+            cursor.execute(data_query, params + [limit, offset])
+            analyses = cursor.fetchall()
+
         result = []
         for a in analyses:
             # ГЕНЕРИРУЕМ СВЕЖУЮ PRESIGNED URL
@@ -1314,4 +1346,4 @@ async def root():
 app.include_router(api_router)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
