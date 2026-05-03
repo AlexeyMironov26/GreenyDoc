@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /$
+Allow: /health/live$
+Allow: /health/ready$
+
+Disallow: /api/auth/
+Disallow: /api/user/
+Disallow: /api/admin/
+Disallow: /history
+Disallow: /settings
+Disallow: /login
+Disallow: /register
+
+Sitemap: http://localhost:8000/sitemap.xml

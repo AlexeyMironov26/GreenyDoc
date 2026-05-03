@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SEO } from './SEO';
 
 interface SettingsPageProps {
   username: string;
@@ -97,6 +98,12 @@ export function SettingsPage({ username, authToken, onDeleteAccount }: SettingsP
   };
 
   return (
+    <>
+      <SEO 
+        title="Настройки"
+        description="Управление аккаунтом и смена пароля."
+        noindex={true}
+      />
     <main className="flex-1 flex items-center justify-center p-6">
       <div className="w-full max-w-2xl space-y-6">
         {/* Change Password */}
@@ -184,5 +191,6 @@ export function SettingsPage({ username, authToken, onDeleteAccount }: SettingsP
         </div>
       </div>
     </main>
+   </>
   );
 }

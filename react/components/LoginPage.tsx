@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-
+import { SEO } from './SEO';
 interface LoginPageProps {
   onLogin: (username: string, token: string, userId: number, role: string) => void;
   onBack: () => void;
@@ -96,6 +96,12 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
   };
 
   return (
+     <>
+      <SEO 
+        title="Вход"
+        description="Войдите в аккаунт GreenyDoc для сохранения истории анализов."
+        noindex={true}
+      />
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div 
@@ -233,5 +239,6 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
         </button>
       </div>
     </div>
+  </>
   );
 }

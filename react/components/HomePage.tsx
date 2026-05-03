@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { FileUploadZone } from './FileUploadZone';
 import { AnalysisResult, AnalysisData } from './AnalysisResult';
 import { useApi } from './hooks/useApi';  
+import { SEO } from './SEO';
+import { JsonLd } from './JsonLD';
 
 interface HomePageProps {
   username?: string;
@@ -117,6 +119,29 @@ const response = await fetch(`${API_URL}/api/analyses`, {
   };
 
   return (
+    <>
+      <SEO 
+        title="Главная"
+        description="Загрузите фото растения и получите AI диагностику заболеваний. Бесплатный анализ листьев с рекомендациями по лечению."
+        canonical="http://localhost:5173/"
+      />
+      
+      <JsonLd 
+        data={{
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "GreenyDoc",
+          "description": "AI диагностика болезней растений по фотографии",
+          "url": "http://localhost:5173",
+          "applicationCategory": "Healthcare",
+          "operatingSystem": "Web",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "RUB"
+          }
+        }}
+      />
     <main className="flex-1 flex items-center justify-center p-6">
       <div 
         className="w-full max-w-2xl rounded-2xl p-8 shadow-2xl"
@@ -141,8 +166,9 @@ const response = await fetch(`${API_URL}/api/analyses`, {
             ) : (
               <div className="rounded-lg overflow-hidden bg-white/10">
                 <img 
-                  src={imageUrl} 
-                  alt="Selected plant leaf" 
+                  src={imageUrl}
+                  loading="lazy"
+                  alt="Загруженное изображение листа растения для анализа"
                   className="w-full h-auto max-h-96 object-contain"
                 />
               </div>
@@ -181,5 +207,6 @@ const response = await fetch(`${API_URL}/api/analyses`, {
         )}
       </div>
     </main>
+     </>
   );
 }

@@ -1,4 +1,3 @@
-// components/HistoryFilters.tsx
 import React from 'react';
 
 interface HistoryFiltersProps {

@@ -10,16 +10,13 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 import hashlib
 import secrets
-import requests
-import base64
 from protctd_keys import api_key
 import logging
 import os
 from fastapi.staticfiles import StaticFiles  
 from enum import Enum
 from services import AuthService, get_auth_service
-from common import get_db, ALGORITHM, SECRET_KEY, verify_password, hash_password
-from common import validate_file, MAX_FILE_SIZE
+from common import get_db, ALGORITHM, SECRET_KEY, verify_password, hash_password, analyze_plant_disease, validate_file
 from s3_service import upload_file, generate_presigned_url, delete_file
 
 
@@ -130,71 +127,6 @@ def check_permission(user_id: int, required_permission: Permission) -> bool:
 
 #==== Roles =====
 
-
-#Конфигурация Plant.id API
-PLANT_ID_API_KEY = api_key  
-PLANT_ID_API_URL = "https://api.plant.id/v2/identify"
-
-def analyze_plant_disease(image_bytes: bytes) -> dict:
-    """
-    Анализирует изображение растения на наличие болезней
-    через Plant.id API
-    """
-    try:
-        # Кодируем изображение в base64
-        encoded_image = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Подготавливаем запрос к API
-        payload = {
-            "images": [encoded_image],
-            "modifiers": ["crops_fast", "similar_images"],
-            "plant_language": "ru",
-            "disease_details": ["cause", "treatment"]
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Api-Key": PLANT_ID_API_KEY
-        }
-        
-        # Отправляем запрос
-        response = requests.post(PLANT_ID_API_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        # Парсим результат
-        if result.get("suggestions"):
-            suggestion = result["suggestions"][0]
-            
-            # Проверяем на болезни
-            is_healthy = True
-            diseases = []
-            
-            if "disease" in suggestion:
-                is_healthy = False
-                diseases.append({
-                    "name": suggestion["disease"]["name"],
-                    "probability": suggestion["disease"]["probability"],
-                    "cause": suggestion["disease"].get("cause", ""),
-                    "treatment": suggestion["disease"].get("treatment", "")
-                })
-            
-            return {
-                "plant_name": suggestion["plant_name"],
-                "probability": suggestion["probability"],
-                "is_healthy": is_healthy,
-                "diseases": diseases,
-                "similar_images": suggestion.get("similar_images", [])[:3]
-            }
-        
-        return {"error": "Не удалось определить растение"}
-        
-    except requests.exceptions.RequestException as e:
-        return {"error": f"Ошибка API: {str(e)}"}
-    except Exception as e:
-        return {"error": f"Внутренняя ошибка: {str(e)}"}
-
 #НАСТРОЙКИ БЕЗОПАСНОСТИ
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Время жизни токена
@@ -205,6 +137,7 @@ security = HTTPBearer()
 app = FastAPI(title="GreenyDoc", version="1.0.0")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+app.mount("/", StaticFiles(directory="public"), name="public")
 #MIDDLEWARE
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -820,29 +753,35 @@ async def create_analysis(
         ai_result = analyze_plant_disease(image_bytes)
         print("прошли ai анализ")
         print(f"🔍 ai_result ПОЛНОСТЬЮ: {ai_result}")
-        if "error" in ai_result:
+        if "error" in ai_result: #тут у нас реализация принципа - graceful degradation - корректное поведение при
+        # недоступности внешнего api
             analysis_result = AnalysisResult(
             status="no_disease",
             disease_name="Тестовый анализ (API отключен)",
             reference_link=None,
             treatment_link=None
         )
+            print(ai_result)
+        else:
+        #Форматирование результата
+            if not ai_result["is_healthy"] and ai_result["diseases"]:
+                disease = ai_result["diseases"][0]
+                analysis_result = AnalysisResult(
+                    status="disease_found",
+                    disease_name=f"{disease['name']} (вероятность: {disease['probability']:.0%})",
+                    reference_link="https://plant.id/disease-info",
+                    treatment_link="https://plant.id/treatment"
+                )
+                print(ai_result)
+            else:
+                analysis_result = AnalysisResult(
+                    status="no_disease",
+                    disease_name=f"Растение здорово! Определено: {ai_result['plant_name']}"
+            )
+                print(ai_result)
         print("прошли проверку на ошибку в ai анализе")
         #Т к у нас временная заглушка при ошибке связи с сервером плэнт айди, то пока закоментируем код, пытающийся извлекать параметры из результата от плэнтайди
-        # Форматирование результата (общая логика для всех)
-        # if not ai_result["is_healthy"] and ai_result["diseases"]:
-        #     disease = ai_result["diseases"][0]
-        #     analysis_result = AnalysisResult(
-        #         status="disease_found",
-        #         disease_name=f"{disease['name']} (вероятность: {disease['probability']:.0%})",
-        #         reference_link="https://plant.id/disease-info",
-        #         treatment_link="https://plant.id/treatment"
-        #     )
-        # else:
-        #     analysis_result = AnalysisResult(
-        #         status="no_disease",
-        #         disease_name=f"Растение здорово! Определено: {ai_result['plant_name']}"
-        #     )
+        
         print("перед каррент юзер")
         print(f"🔥 current_user = {current_user}")
         print(f"🔥 тип current_user = {type(current_user)}")
@@ -854,18 +793,6 @@ async def create_analysis(
             presigned_url = generate_presigned_url(file_key, expires_in=3600)
             print("выполнили пресайнд юрл")
             with get_db() as conn:
-                # print("внутри with get_db")
-                # print("🔍 ПРОВЕРКА ДАННЫХ ПЕРЕД ВСТАВКОЙ:")
-                # print(f"   user_id = {current_user['id']} (тип: {type(current_user['id'])})")
-                # print(f"   image_path = {file_key} (тип: {type(file_key)})")
-                # print(f"   presigned_url = {presigned_url[:50]}...")
-                # print(f"   disease_name = {analysis_result.disease_name}")
-                # print(f"   diagnosis = {ai_result['plant_name']}")
-                # print(f"   result = {'disease_found' if not ai_result['is_healthy'] else 'no_disease'}")
-                # print(f"   reference_link = {analysis_result.reference_link}")
-                # print(f"   treatment_link = {analysis_result.treatment_link}")
-                # print(f"   status = {analysis_result.status}")
-                # print(f"   date = {datetime.datetime.now().strftime('%Y-%m-%d')}")
                 cursor = conn.cursor()
                 try:
                     cursor.execute('''
@@ -878,8 +805,8 @@ async def create_analysis(
                         file_key, # сохраняем ключ MinIO
                         presigned_url, # временная ссылка
                         analysis_result.disease_name,
-                        "Неизвестное растение", # временная заглушка, ai_result["plant_name"],
-                        "disease_found",# пока плэнтайди не работает временная заглушка "disease_found" if not ai_result["is_healthy"] else "no_disease",
+                        "Неизвестное растение" if "error" in ai_result else ai_result.get("plant_name", "Неизвестное растение"), #get - безопасное извлечение значения из словаря со значением по умолчанию
+                        "no_disease" if ("error" in ai_result or ai_result.get("is_healthy", True)) else "disease_found",
                         analysis_result.reference_link,
                         analysis_result.treatment_link,
                         analysis_result.status,

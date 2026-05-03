@@ -1,4 +1,3 @@
-// hooks/useApi.ts
 import { useCallback } from 'react';
 
 const API_URL = 'http://localhost:8000';
@@ -12,6 +11,7 @@ export function useApi() {
       const res = await fetch(`${API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ refresh_token: refreshToken })
       });
       
@@ -30,6 +30,7 @@ export function useApi() {
     
     const makeRequest = () => fetch(`${API_URL}${endpoint}`, {
       ...options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` }),

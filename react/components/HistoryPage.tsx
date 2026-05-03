@@ -3,6 +3,7 @@ import { useApi } from './hooks/useApi';
 import { useAnalysisHistory } from './hooks/useAnalysisHistory';
 import { HistoryFilters } from './HistoryFilters';
 import { Pagination } from './Pagination';
+import { SEO } from './SEO';
 
 const API_URL = 'http://localhost:8000';
 
@@ -37,6 +38,12 @@ export function HistoryPage() {
     }
 
     return (
+      <>
+    <SEO 
+      title="История анализов"
+      description="Все ваши анализы растений в одном месте. История диагнозов и рекомендаций по лечению."
+      canonical="http://localhost:5173/history"
+    />
         <main className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-6xl mx-auto">
                 <h2 className="text-white text-3xl mb-6">История анализов</h2>
@@ -72,7 +79,8 @@ export function HistoryPage() {
                                         {item.image_url && (
                                             <img
                                                 src={item.image_url}
-                                                alt={`Растение ${item.diagnosis || ''}`}
+                                                loading="lazy"
+                                                alt={`Анализ растения: ${item.diagnosis}. Результат: ${item.disease_name || 'здоров'}`}
                                                 className="w-full h-full object-cover"
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = 
@@ -139,6 +147,7 @@ export function HistoryPage() {
                 )}
             </div>
         </main>
+      </>
     );
 }
 

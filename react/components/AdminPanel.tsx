@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApi } from './hooks/useApi';
+import { SEO } from './SEO';
 
 interface AdminPanelProps {
   username: string;
@@ -159,6 +160,13 @@ export function AdminPanel({ username }: AdminPanelProps) {
   };
 
   return (
+    <>
+      <SEO 
+        title="Админ-панель"
+        description="Управление пользователями и анализами."
+        noindex={true}
+      />
+
     <div className="admin-panel">
       <div className="admin-header">
         <h1>Панель администратора</h1>
@@ -337,5 +345,6 @@ export function AdminPanel({ username }: AdminPanelProps) {
         )}
       </div>
     </div>
+  </>
   );
 }

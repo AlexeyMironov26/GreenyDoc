@@ -1,4 +1,3 @@
-// hooks/useAnalysisHistory.ts
 import { useState, useEffect, useCallback } from 'react';
 
 interface Filters {
@@ -56,8 +55,15 @@ export function useAnalysisHistory(apiRequest: any) {
     }, [fetchData]);
 
     const updateFilter = useCallback((key: string, value: any) => {
-        setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
-    }, []);
+    setFilters(prev => {
+        // Если меняем страницу — оставляем новое значение, не сбрасываем на 1
+        if (key === 'page') {
+            return { ...prev, page: value };
+        }
+        // Для остальных фильтров — сбрасываем страницу на 1
+        return { ...prev, [key]: value, page: 1 };
+    });
+}, []);
 
     return { data, loading, pagination, filters, updateFilter };
 }
