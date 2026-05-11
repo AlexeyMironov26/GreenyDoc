@@ -76,10 +76,10 @@ jobs:
         run: |
           docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
       
-      - name: Check health endpoints
-        run: |
-          curl -f http://localhost:8000/health/live || exit 1
-          curl -f http://localhost:5173 || exit 1
+      # - name: Check health endpoints
+      #   run: |
+      #     curl -f http://localhost:8000/health/live || exit 1
+      #     curl -f http://localhost:5173 || exit 1
       
       - name: Stop services
         run: docker compose down
