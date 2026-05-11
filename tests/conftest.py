@@ -1,13 +1,18 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend'))
+# Мок s3_service до импорта main
+from unittest.mock import patch
+patch('s3_service.ensure_bucket_exists').start()
+patch('s3_service.upload_file').start()
+patch('s3_service.generate_presigned_url').start()
+patch('s3_service.delete_file').start()
 
 import pytest
 from fastapi.testclient import TestClient
 from main import app
 from common import get_db, hash_password
 import sqlite3
-from unittest.mock import patch
 
 # ========== БАЗА ДАННЫХ ==========
 @pytest.fixture
