@@ -51,9 +51,9 @@ jobs:
       
       - name: Start services with Docker Compose
         run: |
-          docker-compose up -d
+          docker compose up -d
           sleep 10
-          docker-compose ps
+          docker compose ps
       
       - name: Check health endpoints
         run: |
@@ -61,4 +61,4 @@ jobs:
           curl -f http://localhost:5173 || exit 1
       
       - name: Stop services
-        run: docker-compose down
+        run: docker compose down
