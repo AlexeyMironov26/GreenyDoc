@@ -3,7 +3,7 @@ import { FileUploadZone } from './FileUploadZone';
 import { AnalysisResult, AnalysisData } from './AnalysisResult';
 import { useApi } from './hooks/useApi';  
 import { SEO } from './SEO';
-import { JsonLd } from './Jsonld';
+import { JsonLd } from './JsonLD';
 
 interface HomePageProps {
   username?: string;
