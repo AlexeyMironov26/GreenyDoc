@@ -24,6 +24,11 @@ jobs:
           cd backend
           pip install -r requirements.txt
       
+      - name: Create protctd_keys.py for tests
+        run: |
+          echo "api_key='test_api_key_for_ci'" > backend/protctd_keys.py
+          echo "secretKey='test_secret_key_for_ci'" >> backend/protctd_keys.py
+      
       - name: Run backend tests
         run: |
           pip install pytest pytest-cov
