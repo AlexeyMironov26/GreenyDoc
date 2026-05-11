@@ -48,7 +48,17 @@ jobs:
       
       - name: Build frontend Docker image
         run: docker build -t greenydoc-frontend ./react
-      
+    
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY=test_secret_key_for_ci" >> .env
+          echo "PLANT_ID_API_KEY=test_plant_id_key" >> .env
+          echo "MINIO_ACCESS_KEY=minioadmin" >> .env
+          echo "MINIO_SECRET_KEY=minioadmin123" >> .env
+          echo "MINIO_ENDPOINT=minio:9000" >> .env
+          echo "MINIO_BUCKET=greenydoc" >> .env
+          echo "MINIO_SECURE=false" >> .env
+
       - name: Start services with Docker Compose
         run: |
           docker compose up -d
