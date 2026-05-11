@@ -35,10 +35,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
       
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install
       
       - name: Run frontend tests
         run: npm run test -- --passWithNoTests || true
@@ -57,8 +57,8 @@ jobs:
       
       - name: Check health endpoints
         run: |
-          curl -f http://localhost:8000/health/live
-          curl -f http://localhost:5173 
+          curl -f http://localhost:8000/health/live || exit 1
+          curl -f http://localhost:5173 || exit 1
       
       - name: Stop services
         run: docker-compose down
