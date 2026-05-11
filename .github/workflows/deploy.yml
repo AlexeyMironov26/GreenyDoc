@@ -27,7 +27,7 @@ jobs:
       - name: Run backend tests
         run: |
           pip install pytest pytest-cov
-          pytest tests/ --cov=. --cov-fail-under=50 || true
+          pytest tests/ --cov=. --cov-fail-under=50
         env:
           SECRET_KEY: test_key
           PLANT_ID_API_KEY: test_key
@@ -41,7 +41,7 @@ jobs:
         run: npm install
       
       - name: Run frontend tests
-        run: npm run test -- --passWithNoTests || true
+        run: npm run test -- --passWithNoTests 
       
       - name: Build backend Docker image
         run: docker build -t greenydoc-backend ./backend
@@ -62,19 +62,19 @@ jobs:
       - name: Start services with Docker Compose
         run: |
           docker compose up -d
-          sleep 30
+          sleep 10
           docker compose ps
       
-      - name: Debug backend logs
-        run: |
-          echo "=== BACKEND LOGS ==="
-          docker compose logs backend
-          echo "=== BACKEND HEALTH CHECK ==="
-          curl -f http://localhost:8000/health/live || echo "Health check failed"
+      # - name: Debug backend logs
+      #   run: |
+      #     echo "=== BACKEND LOGS ==="
+      #     docker compose logs backend
+      #     echo "=== BACKEND HEALTH CHECK ==="
+      #     curl -f http://localhost:8000/health/live || echo "Health check failed"
 
-      - name: Check if containers are running
-        run: |
-          docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
+      # - name: Check if containers are running
+      #   run: |
+      #     docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
       
       # - name: Check health endpoints
       #   run: |
