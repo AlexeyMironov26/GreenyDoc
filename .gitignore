@@ -12,6 +12,7 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+e2e/
 
 # Node
 node_modules/
