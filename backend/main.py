@@ -1310,6 +1310,7 @@ async def root():
 
 #подключим роутер к приложению
 app.include_router(api_router)
-app.mount("/", StaticFiles(directory="public"), name="public")
+public_dir = os.path.join(os.path.dirname(__file__), "public")
+app.mount("/", StaticFiles(directory=public_dir), name="public") 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
