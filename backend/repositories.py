@@ -56,6 +56,12 @@ class RefreshTokenRepository:
         with get_db() as conn:
             token_hash = self._hash_token(token)
             cursor = conn.cursor()
+            # Сначала удаляем старый токен пользователя (если есть)
+            cursor.execute(
+                "DELETE FROM refresh_tokens WHERE user_id = ?",
+                (user_id,)
+            )
+            # Потом вставляем новый
             cursor.execute(
                 "INSERT INTO refresh_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
                 (token_hash, user_id, expires_at)

@@ -20,8 +20,8 @@ def analyze_plant_disease(image_bytes: bytes) -> dict:
     Анализирует изображение растения на наличие болезней
     через Plant.id API
     """
-    return {"error": "Тестовый режим: API отключен для экономии токенов"}
-    print("Тестовый режим: API отключен для экономии токенов")
+    # return {"error": "Тестовый режим: API отключен для экономии токенов"}
+    # print("Тестовый режим: API отключен для экономии токенов")
     try:
         # Кодируем изображение в base64
         base64_image = base64.b64encode(image_bytes).decode('utf-8')

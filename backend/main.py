@@ -135,9 +135,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Время жизни токена
 security = HTTPBearer()
 
 app = FastAPI(title="GreenyDoc", version="1.0.0")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-app.mount("/", StaticFiles(directory="public"), name="public")
 #MIDDLEWARE
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -146,7 +143,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 # CORS middleware - разрешает запросы с фронтенда
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:80",
+        "http://localhost"],  # React dev servers
     allow_credentials=True,
     allow_methods=["*"],  # Разрешаем все методы
     allow_headers=["*"],  # Разрешаем все заголовки
@@ -499,7 +497,48 @@ def ready_check():
             status_code=503,
             content=error_response.dict()
         )
+# from fastapi.responses import PlainTextResponse
 
+# # robots.txt
+# @api_router.get("/robots.txt", response_class=PlainTextResponse)
+# async def robots_txt():
+#     return """User-agent: *
+# Allow: /$
+# Allow: /health/live$
+# Allow: /health/ready$
+
+# Disallow: /api/auth/
+# Disallow: /api/user/
+# Disallow: /api/admin/
+# Disallow: /history
+# Disallow: /settings
+# Disallow: /login
+# Disallow: /register
+
+# Sitemap: http://localhost:8000/sitemap.xml
+# """
+
+# # sitemap.xml
+# @api_router.get("/sitemap.xml", response_class=PlainTextResponse)
+# async def sitemap_xml():
+#     return """<?xml version="1.0" encoding="UTF-8"?>
+# <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+#   <url>
+#     <loc>http://localhost:8000/</loc>
+#     <changefreq>weekly</changefreq>
+#     <priority>1.0</priority>
+#   </url>
+#   <url>
+#     <loc>http://localhost:8000/health/live</loc>
+#     <changefreq>always</changefreq>
+#     <priority>0.5</priority>
+#   </url>
+#   <url>
+#     <loc>http://localhost:8000/health/ready</loc>
+#     <changefreq>always</changefreq>
+#     <priority>0.5</priority>
+#   </url>
+# </urlset>"""
 #АВТОРИЗАЦИОННЫЕ ЭНДПОЙНТЫ 
 
 @api_router.post("/api/auth/register", response_model=Token)
@@ -1271,6 +1310,6 @@ async def root():
 
 #подключим роутер к приложению
 app.include_router(api_router)
-
+app.mount("/", StaticFiles(directory="public"), name="public")
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

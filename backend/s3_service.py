@@ -28,10 +28,10 @@ s3_client = boto3.client(
 def ensure_bucket_exists():
     try:
         s3_client.head_bucket(Bucket=MINIO_BUCKET)
-        print(f"✅ Бакет '{MINIO_BUCKET}' уже существует")
+        print(f"Бакет '{MINIO_BUCKET}' уже существует")
     except ClientError:
         s3_client.create_bucket(Bucket=MINIO_BUCKET)
-        print(f"✅ Бакет '{MINIO_BUCKET}' создан")
+        print(f"Бакет '{MINIO_BUCKET}' создан")
 
 
 def upload_file(file_bytes: bytes, original_filename: str, content_type: str) -> str:

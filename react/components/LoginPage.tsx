@@ -147,6 +147,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <label className="block text-white mb-2">Логин</label>
                 <input
                   type="text"
+                  placeholder="Логин"          
                   value={loginData.username}
                   onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
@@ -158,6 +159,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <label className="block text-white mb-2">Пароль</label>
                 <input
                   type="password"
+                  placeholder="Пароль"
                   value={loginData.password}
                   onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
@@ -182,6 +184,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <label className="block text-white mb-2">Логин</label>
                 <input
                   type="text"
+                  placeholder="Логин"  
                   value={registerData.username}
                   onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
@@ -193,6 +196,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <label className="block text-white mb-2">Пароль</label>
                 <input
                   type="password"
+                  placeholder="Пароль" 
                   value={registerData.password}
                   onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"
@@ -204,6 +208,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <label className="block text-white mb-2">Повторите пароль</label>
                 <input
                   type="password"
+                  placeholder="Повторите пароль" 
                   value={registerData.confirmPassword}
                   onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
                   className="w-full px-4 py-2 rounded-md bg-white/90 text-gray-800 outline-none focus:ring-2 focus:ring-white"

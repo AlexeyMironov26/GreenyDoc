@@ -3,7 +3,7 @@ import { FileUploadZone } from './FileUploadZone';
 import { AnalysisResult, AnalysisData } from './AnalysisResult';
 import { useApi } from './hooks/useApi';  
 import { SEO } from './SEO';
-import { JsonLd } from './JsonLD';
+import { JsonLd } from './Jsonld';
 
 interface HomePageProps {
   username?: string;
@@ -149,6 +149,9 @@ const response = await fetch(`${API_URL}/api/analyses`, {
           background: 'linear-gradient(to bottom, #4ade80, #16a34a)'
         }}
       >
+        <h1 className="text-white text-4xl">GreenyDoc</h1>
+<h2 className="text-white/80 text-lg mt-4">AI диагностика болезней растений</h2>
+<h3 className="text-white/60 text-sm mt-2">Загрузите фото листа для анализа</h3>
         {error && (
           <div className="mb-4 border-2 border-red-600 bg-white rounded-lg p-4">
             <p className="text-red-800">{error}</p>
