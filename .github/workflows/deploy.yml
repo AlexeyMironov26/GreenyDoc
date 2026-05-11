@@ -62,8 +62,19 @@ jobs:
       - name: Start services with Docker Compose
         run: |
           docker compose up -d
-          sleep 10
+          sleep 30
           docker compose ps
+      
+      - name: Debug backend logs
+        run: |
+          echo "=== BACKEND LOGS ==="
+          docker compose logs backend
+          echo "=== BACKEND HEALTH CHECK ==="
+          curl -f http://localhost:8000/health/live || echo "Health check failed"
+
+      - name: Check if containers are running
+        run: |
+          docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
       
       - name: Check health endpoints
         run: |
