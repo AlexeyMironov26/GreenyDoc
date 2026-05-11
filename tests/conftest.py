@@ -1,12 +1,21 @@
+import atexit
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend'))
-# Мок s3_service до импорта main
-from unittest.mock import patch
-patch('s3_service.ensure_bucket_exists').start()
-patch('s3_service.upload_file').start()
-patch('s3_service.generate_presigned_url').start()
-patch('s3_service.delete_file').start()
+# Мок botocore.client ДО импорта main
+from unittest.mock import MagicMock, patch
+
+# Создаём мок для s3_client
+mock_s3_client = MagicMock()
+mock_s3_client.head_bucket.return_value = None
+mock_s3_client.put_object.return_value = None
+mock_s3_client.generate_presigned_url.return_value = "https://mock-url.com/image.jpg"
+mock_s3_client.delete_object.return_value = None
+
+# Запускаем мок глобально
+_s3_mock = patch('boto3.client', return_value=mock_s3_client)
+_s3_mock.start()
+atexit.register(lambda: _s3_mock.stop()) 
 
 import pytest
 from fastapi.testclient import TestClient
@@ -132,3 +141,6 @@ def clean_tables(test_db):
     test_db.execute("DELETE FROM plant_analyses")
     test_db.execute("DELETE FROM users")
     test_db.commit()
+
+def pytest_unconfigure(config):
+    _s3_mock.stop()
