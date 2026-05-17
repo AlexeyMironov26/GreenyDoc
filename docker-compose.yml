@@ -25,11 +25,6 @@ services:
     networks:
       - greenydoc-network
     restart: unless-stopped
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
 
   frontend:
     build:
@@ -40,15 +35,9 @@ services:
       - "5173:80"
     depends_on:
       - backend
-        #condition: service_healthy
     networks:
       - greenydoc-network
     restart: unless-stopped
-    # healthcheck:
-    #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
 
   minio:
     image: minio/minio:latest

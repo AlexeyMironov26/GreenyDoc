@@ -205,3 +205,11 @@ docker-compose down
 
 # Остановить и удалить тома (очистить данные)
 docker-compose down -v
+
+6. Пересборка после изменений
+bash
+# Пересобрать образы и запустить
+docker-compose up -d --build
+
+# Или только пересобрать без запуска
+docker-compose build
